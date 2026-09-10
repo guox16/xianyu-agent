@@ -1,0 +1,6 @@
+# Agent 框架：后续用来组合模型、消息和工具。
+langchain==1.4.0
+# DeepSeek 模型适配器。
+langchain-deepseek==1.1.0
+# 将本地 .env 文件读取为环境变量。
+python-dotenv==1.2.3
