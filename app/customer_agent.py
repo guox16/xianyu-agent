@@ -3,8 +3,8 @@
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from material_tools import query_game_material
-from model_call import create_model
+from app.material_tools import query_game_material
+from app.model import create_model
 
 
 class CustomerAgent:

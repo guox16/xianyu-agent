@@ -8,6 +8,10 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 
+# config.py 位于 app 包内，项目根目录在它的上一层。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
 @dataclass(frozen=True)
 class Settings:
     """把配置放在一个对象里，后续调用模型时可以统一读取。"""
@@ -19,9 +23,9 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    """读取项目旁的 .env；已有的系统环境变量优先。"""
+    """读取项目根目录的 .env；已有的系统环境变量优先。"""
     # 使用当前文件的位置定位配置，不受终端工作目录影响。
-    env_path = Path(__file__).resolve().parent / ".env"
+    env_path = PROJECT_ROOT / ".env"
     load_dotenv(env_path, override=False, encoding="utf-8")
 
     # getenv 从环境变量中取值；strip 去掉误输入的首尾空格。

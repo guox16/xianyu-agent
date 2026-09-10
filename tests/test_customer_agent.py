@@ -12,9 +12,9 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 
-from customer_agent import CustomerAgent
-from material_tools import query_game_material
-from model_call import load_material
+from app.customer_agent import CustomerAgent
+from app.material_tools import query_game_material
+from app.materials import load_material
 
 
 class ScriptedModel(FakeMessagesListChatModel):
@@ -37,7 +37,7 @@ class CustomerAgentTests(unittest.TestCase):
         self.directory = Path(directory.name)
         self.file = self.directory / "sultans-game.md"
         self.file.write_text("测试商品价格：0.1 元；夸克交付；不远程。", encoding="utf-8")
-        root = patch("material_tools.MATERIAL_DIR", self.directory)
+        root = patch("app.material_tools.MATERIAL_DIR", self.directory)
         root.start()
         self.addCleanup(root.stop)
         output = contextlib.redirect_stdout(io.StringIO())
@@ -45,12 +45,12 @@ class CustomerAgentTests(unittest.TestCase):
         self.addCleanup(output.__exit__, None, None, None)
 
     def make_customer(self, responses):
-        with patch("customer_agent.create_model", return_value=ScriptedModel(responses=responses)):
+        with patch("app.customer_agent.create_model", return_value=ScriptedModel(responses=responses)):
             return CustomerAgent()
 
     def test_real_tool_loop_and_followup_keep_paired_messages(self):
         customer = self.make_customer([query_message(), AIMessage(content="0.1 元"), AIMessage(content="不远程")])
-        with patch("material_tools.load_material", wraps=load_material) as loader:
+        with patch("app.material_tools.load_material", wraps=load_material) as loader:
             self.assertEqual(customer.ask("多少钱"), "0.1 元")
             self.assertEqual(customer.ask("能远程吗"), "不远程")
             self.assertEqual(loader.call_count, 1)
@@ -68,12 +68,12 @@ class CustomerAgentTests(unittest.TestCase):
         self.assertEqual(customer.history, [])
         other = self.make_customer([query_message(), AIMessage(content="0.1 元")])
         self.assertEqual(other.history, [])
-        with patch("material_tools.load_material", wraps=load_material) as loader:
+        with patch("app.material_tools.load_material", wraps=load_material) as loader:
             customer.ask("多少钱")
             self.assertEqual(loader.call_count, 1)
 
     def test_unknown_name_cannot_be_used_as_file_path(self):
-        with patch("material_tools.load_material") as loader:
+        with patch("app.material_tools.load_material") as loader:
             for name in ("未登记的游戏", "../.env", str(self.file)):
                 self.assertEqual(query_game_material.invoke({"game_name": name})["status"], "not_found")
             loader.assert_not_called()

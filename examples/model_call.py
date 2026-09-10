@@ -1,29 +1,12 @@
-"""模型调用与多轮会话：历史只保存在当前进程的内存中。"""
+"""普通问答学习示例。项目根目录运行：python -m examples.model_call。"""
 
 from pathlib import Path
 
-from langchain_deepseek import ChatDeepSeek
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
-from config import load_settings
+from app.model import create_model
+from app.materials import load_material
 
-
-def create_model() -> ChatDeepSeek:
-    """统一创建模型，供普通问答和工具 Agent 复用。"""
-    # 复用配置读取功能，不在代码里写密钥。
-    settings = load_settings()
-
-    # 创建 LangChain 模型对象；创建对象本身不会发送对话请求。
-    return ChatDeepSeek(
-        model=settings.model,
-        api_key=settings.api_key,
-        base_url=settings.base_url,
-        timeout=30,       # 网络请求超时，避免一直等待。
-        max_retries=0,    # 学习阶段失败就提示，由用户决定是否再次调用。
-        max_tokens=512,   # 限制单次输出长度，适合简短问答。
-        # DeepSeek 扩展参数：这一步使用非思考模式学习基本调用。
-        extra_body={"thinking": {"type": "disabled"}},
-    )
 
 def ask_model(
     question: str,
@@ -77,22 +60,10 @@ def ask_model(
     return answer
 
 
-def load_material(path: Path) -> str:
-    """读取资料；文件缺失或为空时停止，避免模型在没有依据时继续回答。"""
-    try:
-        # utf-8-sig 同时兼容普通 UTF-8 文件和带 BOM 的 UTF-8 文件。
-        material = path.read_text(encoding="utf-8-sig").strip()
-    except (OSError, UnicodeError):
-        raise ValueError("无法读取商品资料，请确认文件存在、可读取且为 UTF-8 编码。") from None
-    if not material:
-        raise ValueError("商品资料为空，请先补充资料内容。")
-    return material
-
-
 def main(material_path: Path | None = None):
     """连续聊天；/clear 清空历史，/exit 退出。每次启动都是新会话。"""
     try:
-        # material_chat.py 传入路径时读取资料；直接运行本文件保持普通问答。
+        # 传入资料路径时展示直接提供资料的旧流程；默认保持普通问答。
         material = load_material(material_path) if material_path is not None else None
         if material is not None:
             print(f"已读取资料：{material_path.name}（回答时会发送给 DeepSeek）")

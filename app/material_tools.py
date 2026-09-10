@@ -1,13 +1,12 @@
 """把本地商品资料查询注册成 LangChain 工具。"""
 
-from pathlib import Path
-
 from langchain.tools import tool
 
-from model_call import load_material
+from app.materials import load_material
+from app.config import PROJECT_ROOT
 
 
-MATERIAL_DIR = Path(__file__).resolve().parent / "materials"
+MATERIAL_DIR = PROJECT_ROOT / "materials"
 # 只读取已登记文件，不把模型给出的名称直接拼成磁盘路径。
 GAME_FILES = {"苏丹的游戏": "sultans-game.md", "sultan's game": "sultans-game.md"}
 

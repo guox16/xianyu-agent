@@ -10,18 +10,18 @@ import httpx
 from langchain_core.messages import AIMessage
 from openai import APITimeoutError
 
-import model_call
-from config import Settings
+from examples import model_call
+from app.config import Settings
 
 
 class ConversationTests(unittest.TestCase):
     def setUp(self):
-        settings = patch.object(model_call, "load_settings", return_value=Settings(
+        settings = patch("app.model.load_settings", return_value=Settings(
             "test-key", "test-model", "https://example.com",
         ))
         settings.start()
         self.addCleanup(settings.stop)
-        factory = patch.object(model_call, "ChatDeepSeek")
+        factory = patch("app.model.ChatDeepSeek")
         self.model = factory.start().return_value
         self.addCleanup(factory.stop)
         self.model.invoke.return_value = AIMessage(content="测试回复")
