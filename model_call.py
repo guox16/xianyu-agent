@@ -8,6 +8,23 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError
 from config import load_settings
 
 
+def create_model() -> ChatDeepSeek:
+    """统一创建模型，供普通问答和工具 Agent 复用。"""
+    # 复用配置读取功能，不在代码里写密钥。
+    settings = load_settings()
+
+    # 创建 LangChain 模型对象；创建对象本身不会发送对话请求。
+    return ChatDeepSeek(
+        model=settings.model,
+        api_key=settings.api_key,
+        base_url=settings.base_url,
+        timeout=30,       # 网络请求超时，避免一直等待。
+        max_retries=0,    # 学习阶段失败就提示，由用户决定是否再次调用。
+        max_tokens=512,   # 限制单次输出长度，适合简短问答。
+        # DeepSeek 扩展参数：这一步使用非思考模式学习基本调用。
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+
 def ask_model(
     question: str,
     material: str | None = None,
@@ -19,21 +36,7 @@ def ask_model(
         raise ValueError("问题不能为空，请输入一句话。")
     if material is not None and not material.strip():
         raise ValueError("商品资料为空，请先补充资料内容。")
-
-    # 复用配置读取功能，不在代码里写密钥。
-    settings = load_settings()
-
-    # 创建 LangChain 模型对象；创建对象本身不会发送对话请求。
-    model = ChatDeepSeek(
-        model=settings.model,
-        api_key=settings.api_key,
-        base_url=settings.base_url,
-        timeout=30,       # 网络请求超时，避免一直等待。
-        max_retries=0,    # 学习阶段失败就提示，由用户决定是否再次调用。
-        max_tokens=512,   # 限制单次输出长度，适合简短问答。
-        # DeepSeek 扩展参数：这一步使用非思考模式学习基本调用。
-        extra_body={"thinking": {"type": "disabled"}},
-    )
+    model = create_model()
 
     # system 定义回答规则；human 表示用户的问题。
     messages = [
