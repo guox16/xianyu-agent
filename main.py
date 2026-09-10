@@ -1,3 +1,8 @@
+"""项目启动入口：在项目根目录执行 python main.py。"""
+
+from app.chat_cli import main as run_customer_chat
+
+
 def main():
     """显示菜单，根据用户的选择执行对应操作。"""
     print("欢迎使用 Agent 学习项目！")
@@ -5,14 +10,21 @@ def main():
     # 循环显示菜单，直到用户选择退出。
     while True:
         print("\n1. 智能客服")
-        print("2. 发帖生成")
+        print("2. 发帖生成（暂未开发）")
         print("0. 退出")
-        choice = input("请输入选择：").strip()
+        try:
+            choice = input("请输入选择：").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n程序已退出。")
+            return
 
         if choice == "1":
-            print("你选择了智能客服，后续将在这里接入 AI 对话。")
+            # 客服里的 /exit 返回菜单；菜单里的 0 退出整个程序。
+            print("进入智能客服，输入 /exit 返回主菜单。")
+            run_customer_chat()
+            print("已返回主菜单。")
         elif choice == "2":
-            print("你选择了发帖生成，后续将在这里接入文案生成。")
+            print("发帖生成功能暂未开发，请选择智能客服或退出。")
         elif choice == "0":
             print("程序已退出，再见！")
             break
