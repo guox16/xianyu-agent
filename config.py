@@ -1,4 +1,4 @@
-"""第一步：读取、检查模型配置。本文件不会向 DeepSeek 发送请求。"""
+"""读取、检查模型配置。本文件不会向 DeepSeek 发送请求。"""
 
 import os
 from dataclasses import dataclass, field
