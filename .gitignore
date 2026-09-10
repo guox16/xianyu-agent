@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 .env
+# 本地商品资料，仅保留在本机。
+/materials/
