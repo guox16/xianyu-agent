@@ -6,9 +6,9 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy, StructuredOutputError
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
-from app.model import create_model
-from app.material_tools import query_game_material
-from app.posting_types import PostingRequest, PostingDraft
+from app.core.model import create_model
+from app.core.material_tools import query_game_material
+from app.posting.schemas import PostingRequest, PostingDraft
 
 
 POSTING_RULES = """你是闲鱼商品发帖助手，用中文生成标题和正文。

@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from app.config import PROJECT_ROOT
-from app.posting_types import PostingDraft, PostingRequest
+from app.core.config import PROJECT_ROOT
+from app.posting.schemas import PostingDraft, PostingRequest
 
 
 DRAFT_DIR = PROJECT_ROOT / "drafts"

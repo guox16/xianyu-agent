@@ -4,8 +4,8 @@ from pathlib import Path
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
-from app.model import create_model
-from app.materials import load_material
+from app.core.model import create_model
+from app.core.materials import load_material
 
 
 def ask_model(

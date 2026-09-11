@@ -3,9 +3,9 @@
 from langgraph.errors import GraphRecursionError
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
-from app.drafts import save_draft
-from app.posting_agent import PostingAgent
-from app.posting_types import PostingDraft, PostingRequest
+from app.posting.drafts import save_draft
+from app.posting.agent import PostingAgent
+from app.posting.schemas import PostingDraft, PostingRequest
 
 
 def read_request() -> PostingRequest:

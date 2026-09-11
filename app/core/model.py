@@ -2,7 +2,7 @@
 
 from langchain_deepseek import ChatDeepSeek
 
-from app.config import load_settings
+from app.core.config import load_settings
 
 
 def create_model() -> ChatDeepSeek:

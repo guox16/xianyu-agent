@@ -1,7 +1,7 @@
 """项目启动入口：在项目根目录执行 python main.py。"""
 
-from app.chat_cli import main as run_customer_chat
-from app.posting_cli import main as run_posting
+from app.customer.cli import main as run_customer_chat
+from app.posting.cli import main as run_posting
 
 
 def main():

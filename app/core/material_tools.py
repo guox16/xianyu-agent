@@ -2,8 +2,8 @@
 
 from langchain.tools import tool
 
-from app.materials import load_material
-from app.config import PROJECT_ROOT
+from app.core.materials import load_material
+from app.core.config import PROJECT_ROOT
 
 
 MATERIAL_DIR = PROJECT_ROOT / "materials"

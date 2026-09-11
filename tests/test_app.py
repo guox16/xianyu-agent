@@ -15,21 +15,21 @@ from langgraph.errors import GraphRecursionError
 from openai import APITimeoutError
 
 import main
-from app.config import Settings
-from app.customer_agent import CustomerAgent
-from app.material_tools import query_game_material
-from app.materials import load_material
+from app.core.config import Settings
+from app.customer.agent import CustomerAgent
+from app.core.material_tools import query_game_material
+from app.core.materials import load_material
 from examples import model_call
-from app.posting_types import PostingDraft, PostingRequest
-from app.posting_agent import PostingAgent
-from app.drafts import save_draft
+from app.posting.schemas import PostingDraft, PostingRequest
+from app.posting.agent import PostingAgent
+from app.posting.drafts import save_draft
 
 
 class PostingContractTests(unittest.TestCase):
     def test_saved_draft_is_readable_and_does_not_overwrite(self):
         request = PostingRequest(current_game="../苏丹的游戏", focus="安装指导")
         draft = PostingDraft(title="标题", body="夸克交付，不远程", missing_information=[], questions=[])
-        with TemporaryDirectory() as directory, patch("app.drafts.DRAFT_DIR", Path(directory)):
+        with TemporaryDirectory() as directory, patch("app.posting.drafts.DRAFT_DIR", Path(directory)):
             first = save_draft(request, draft, ["简短一点"])
             second = save_draft(request, draft, ["简短一点"])
             self.assertNotEqual(first, second)
@@ -43,10 +43,10 @@ class PostingContractTests(unittest.TestCase):
             self.assertEqual(len(list(Path(directory).iterdir())), 2)
 
     def test_material_is_queried_before_generation_and_failure_asks(self):
-        with patch("app.posting_agent.create_model"), patch("app.posting_agent.create_agent"):
+        with patch("app.posting.agent.create_model"), patch("app.posting.agent.create_agent"):
             agent = PostingAgent()
         request = PostingRequest(current_game="苏丹的游戏", focus="夸克交付")
-        with patch("app.material_tools.load_material", return_value="夸克交付；指导安装；不远程"):
+        with patch("app.core.material_tools.load_material", return_value="夸克交付；指导安装；不远程"):
             messages = agent.prepare(request)
         self.assertIsInstance(messages[-1], ToolMessage)
         self.assertIn("夸克交付", messages[-1].content)
@@ -56,7 +56,7 @@ class PostingContractTests(unittest.TestCase):
         agent.agent.invoke.assert_not_called()
 
     def test_posting_agent_reuses_model_and_has_separate_rules(self):
-        with patch("app.posting_agent.create_model") as model, patch("app.posting_agent.create_agent") as factory:
+        with patch("app.posting.agent.create_model") as model, patch("app.posting.agent.create_agent") as factory:
             PostingAgent()
         model.assert_called_once_with()
         self.assertIn("语气", factory.call_args.kwargs["system_prompt"])
@@ -76,12 +76,12 @@ class PostingContractTests(unittest.TestCase):
 
 class ConversationTests(unittest.TestCase):
     def setUp(self):
-        settings = patch("app.model.load_settings", return_value=Settings(
+        settings = patch("app.core.model.load_settings", return_value=Settings(
             "test-key", "test-model", "https://example.com",
         ))
         settings.start()
         self.addCleanup(settings.stop)
-        factory = patch("app.model.ChatDeepSeek")
+        factory = patch("app.core.model.ChatDeepSeek")
         self.model = factory.start().return_value
         self.addCleanup(factory.stop)
         self.model.invoke.return_value = AIMessage(content="测试回复")
@@ -159,7 +159,7 @@ class PostingAgentTests(unittest.TestCase):
     def test_revisions_reuse_facts_and_failures_preserve_draft(self):
         agent = self.make_agent([draft_message(), draft_message(body="夸克交付，指导安装，不提供远程服务。"),
                                  draft_message("", "", ["请确认 DLC。"])])
-        with patch("app.material_tools.load_material", return_value="夸克交付；指导安装；不远程") as loader:
+        with patch("app.core.material_tools.load_material", return_value="夸克交付；指导安装；不远程") as loader:
             agent.generate(PostingRequest(current_game="苏丹的游戏", focus="安装指导"))
             revised = agent.revise("简短一点")
             agent.revise("突出 DLC")
@@ -178,12 +178,12 @@ class PostingAgentTests(unittest.TestCase):
         self.assertIsNone(self.make_agent([draft_message()]).current_draft)
 
     def make_agent(self, responses):
-        with patch("app.posting_agent.create_model", return_value=ScriptedModel(responses=responses)):
+        with patch("app.posting.agent.create_model", return_value=ScriptedModel(responses=responses)):
             return PostingAgent()
 
     def test_structured_generation_and_key_information_question(self):
         agent = self.make_agent([draft_message(), draft_message("", "", ["请确认是否包含 DLC。"])])
-        with patch("app.material_tools.load_material", return_value="价格 0.1 元，以实际价格为准；夸克交付；指导安装；不远程"):
+        with patch("app.core.material_tools.load_material", return_value="价格 0.1 元，以实际价格为准；夸克交付；指导安装；不远程"):
             draft = agent.generate(PostingRequest(current_game="苏丹的游戏", focus="夸克交付和安装指导，不提供远程服务"))
             self.assertIn("夸克", draft.title)
             self.assertIn("不提供远程", draft.body)
@@ -193,7 +193,7 @@ class PostingAgentTests(unittest.TestCase):
 
     def test_invalid_structured_response_is_corrected_before_commit(self):
         agent = self.make_agent([draft_message("", ""), draft_message("", "", ["请确认 DLC。"])])
-        with patch("app.material_tools.load_material", return_value="测试资料"):
+        with patch("app.core.material_tools.load_material", return_value="测试资料"):
             result = agent.generate(PostingRequest(current_game="苏丹的游戏", focus="安装指导"))
         self.assertTrue(result.questions)
         self.assertIsNone(agent.current_draft)
@@ -201,7 +201,7 @@ class PostingAgentTests(unittest.TestCase):
     def test_truncated_response_does_not_replace_current_draft(self):
         agent = self.make_agent([draft_message()])
         request = PostingRequest(current_game="苏丹的游戏", focus="安装指导")
-        with patch("app.material_tools.load_material", return_value="测试资料"):
+        with patch("app.core.material_tools.load_material", return_value="测试资料"):
             original = agent.generate(request)
         before = list(agent.history)
         truncated = AIMessage(content="截断", response_metadata={"finish_reason": "length"})
@@ -226,7 +226,7 @@ class CustomerAgentTests(unittest.TestCase):
         self.directory = Path(directory.name)
         self.file = self.directory / "sultans-game.md"
         self.file.write_text("测试商品价格：0.1 元；夸克交付；不远程。", encoding="utf-8")
-        root = patch("app.material_tools.MATERIAL_DIR", self.directory)
+        root = patch("app.core.material_tools.MATERIAL_DIR", self.directory)
         root.start()
         self.addCleanup(root.stop)
         output = contextlib.redirect_stdout(io.StringIO())
@@ -234,12 +234,12 @@ class CustomerAgentTests(unittest.TestCase):
         self.addCleanup(output.__exit__, None, None, None)
 
     def make_customer(self, responses):
-        with patch("app.customer_agent.create_model", return_value=ScriptedModel(responses=responses)):
+        with patch("app.customer.agent.create_model", return_value=ScriptedModel(responses=responses)):
             return CustomerAgent()
 
     def test_real_tool_loop_and_followup_keep_paired_messages(self):
         customer = self.make_customer([query_message(), AIMessage(content="0.1 元"), AIMessage(content="不远程")])
-        with patch("app.material_tools.load_material", wraps=load_material) as loader:
+        with patch("app.core.material_tools.load_material", wraps=load_material) as loader:
             self.assertEqual(customer.ask("多少钱"), "0.1 元")
             self.assertEqual(customer.ask("能远程吗"), "不远程")
             self.assertEqual(loader.call_count, 1)
@@ -257,12 +257,12 @@ class CustomerAgentTests(unittest.TestCase):
         self.assertEqual(customer.history, [])
         other = self.make_customer([query_message(), AIMessage(content="0.1 元")])
         self.assertEqual(other.history, [])
-        with patch("app.material_tools.load_material", wraps=load_material) as loader:
+        with patch("app.core.material_tools.load_material", wraps=load_material) as loader:
             customer.ask("多少钱")
             self.assertEqual(loader.call_count, 1)
 
     def test_unknown_name_cannot_be_used_as_file_path(self):
-        with patch("app.material_tools.load_material") as loader:
+        with patch("app.core.material_tools.load_material") as loader:
             for name in ("未登记的游戏", "../.env", str(self.file)):
                 self.assertEqual(query_game_material.invoke({"game_name": name})["status"], "not_found")
             loader.assert_not_called()
@@ -297,9 +297,9 @@ class MenuTests(unittest.TestCase):
     def test_posting_generate_revise_save_reenter_and_exit(self):
         inputs = ["2", "", "", "", "", "简短一点", "/save", "/exit", "2", "/exit", "0"]
         model = ScriptedModel(responses=[draft_message(), draft_message(body="夸克交付，指导安装，不提供远程服务。")])
-        with TemporaryDirectory() as directory, patch("app.drafts.DRAFT_DIR", Path(directory)), \
-                patch("app.posting_agent.create_model", return_value=model), \
-                patch("app.material_tools.load_material", return_value="夸克交付；指导安装；不远程"), \
+        with TemporaryDirectory() as directory, patch("app.posting.drafts.DRAFT_DIR", Path(directory)), \
+                patch("app.posting.agent.create_model", return_value=model), \
+                patch("app.core.material_tools.load_material", return_value="夸克交付；指导安装；不远程"), \
                 patch("builtins.input", side_effect=inputs), contextlib.redirect_stdout(io.StringIO()) as output:
             main.main()
             files = list(Path(directory).glob("*.json"))
@@ -312,9 +312,9 @@ class MenuTests(unittest.TestCase):
 
     def test_posting_timeout_retry_and_save_failure_keep_session(self):
         model = ScriptedModel(responses=[draft_message()])
-        with patch("app.posting_agent.create_model", return_value=model), \
-                patch("app.material_tools.load_material", return_value="夸克交付"), \
-                patch("app.posting_cli.save_draft", side_effect=OSError), \
+        with patch("app.posting.agent.create_model", return_value=model), \
+                patch("app.core.material_tools.load_material", return_value="夸克交付"), \
+                patch("app.posting.cli.save_draft", side_effect=OSError), \
                 patch("builtins.input", side_effect=["2", "", "", "", "", "/retry", "/save", "/exit", "0"]), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             original = PostingAgent._invoke
@@ -333,9 +333,9 @@ class MenuTests(unittest.TestCase):
 
     def test_posting_question_blocks_save_and_can_be_resolved(self):
         model = ScriptedModel(responses=[draft_message("", "", ["请确认 DLC"]), draft_message()])
-        with patch("app.posting_agent.create_model", return_value=model), \
-                patch("app.material_tools.load_material", return_value="夸克交付"), \
-                patch("app.posting_cli.save_draft") as saver, \
+        with patch("app.posting.agent.create_model", return_value=model), \
+                patch("app.core.material_tools.load_material", return_value="夸克交付"), \
+                patch("app.posting.cli.save_draft") as saver, \
                 patch("builtins.input", side_effect=["2", "", "", "", "突出DLC", "/save", "不写DLC了", "/exit", "0"]), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             main.main()
@@ -348,7 +348,7 @@ class MenuTests(unittest.TestCase):
         first.ask.return_value = "第一场回复"
         second.ask.return_value = "第二场回复"
         inputs = ["1", "多少钱", "/clear", "/exit", "1", "怎么发", "/exit", "0"]
-        with patch("app.chat_cli.CustomerAgent", side_effect=[first, second]) as factory, \
+        with patch("app.customer.cli.CustomerAgent", side_effect=[first, second]) as factory, \
                 patch("builtins.input", side_effect=inputs), contextlib.redirect_stdout(io.StringIO()) as output:
             main.main()
         self.assertEqual(factory.call_count, 2)
@@ -359,7 +359,7 @@ class MenuTests(unittest.TestCase):
         self.assertIn("程序已退出，再见", output.getvalue())
 
     def test_invalid_input_does_not_start_agent(self):
-        with patch("app.chat_cli.CustomerAgent") as factory, \
+        with patch("app.customer.cli.CustomerAgent") as factory, \
                 patch("builtins.input", side_effect=["9", "0"]), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             main.main()
@@ -367,7 +367,7 @@ class MenuTests(unittest.TestCase):
         self.assertIn("输入无效", output.getvalue())
 
     def test_configuration_error_returns_to_menu(self):
-        with patch("app.chat_cli.CustomerAgent", side_effect=ValueError("invalid config")), \
+        with patch("app.customer.cli.CustomerAgent", side_effect=ValueError("invalid config")), \
                 patch("builtins.input", side_effect=["1", "0"]), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             main.main()

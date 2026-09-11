@@ -38,7 +38,7 @@ python -m venv .venv
 
 运行前准备根目录的 `.env`，字段参考 `.env.example`，填写自己的 DeepSeek API Key、模型名称和接口地址。已有环境变量优先于 `.env`。不要覆盖已有私密配置或把密钥提交到 Git。
 
-本地资料位于 `materials/`，此目录被 Git 忽略。复制项目到另一台电脑时需要单独准备 UTF-8 商品资料；默认映射为 `materials/sultans-game.md`。增加游戏时，在 `app/material_tools.py` 的 `GAME_FILES` 中登记名称和文件名。
+本地资料位于 `materials/`，此目录被 Git 忽略。复制项目到另一台电脑时需要单独准备 UTF-8 商品资料；默认映射为 `materials/sultans-game.md`。增加游戏时，在 `app/core/material_tools.py` 的 `GAME_FILES` 中登记名称和文件名。
 
 - 菜单输入 `1` 进入客服，输入 `0` 退出程序。
 - 客服输入 `/exit` 返回菜单，重新进入会创建新会话。
@@ -51,13 +51,28 @@ python -m venv .venv
 ## 目录结构
 
 ```text
-app/         业务代码：配置、模型、资料工具、客服与发帖 Agent、命令行入口、草稿保存
+app/
+  core/                 通用基础，供两个业务模块复用
+    config.py           配置读取与项目根目录
+    model.py            模型创建
+    materials.py        本地资料读取
+    material_tools.py   商品资料查询工具
+  customer/             客服业务
+    agent.py            客服规则与多轮问答
+    cli.py              客服命令行入口
+  posting/              发帖业务
+    agent.py            发帖规则、生成与连续修改
+    schemas.py          输入要求与输出草稿的数据结构
+    drafts.py           本地草稿保存
+    cli.py              发帖命令行入口
 tests/       自动化测试
 examples/    普通问答与直接传资料的学习示例
 materials/   本地商品资料，不提交 Git
 drafts/      本地 JSON 草稿，不提交 Git
 main.py      菜单入口
 ```
+
+`main.py` 负责菜单分发，分别进入 `customer/cli.py` 和 `posting/cli.py`。客服与发帖各自管理会话，共同依赖 `core/`；`core/` 不依赖具体业务模块。包内的 `__init__.py` 仅标记 Python 包，不创建模型或会话。测试继续集中放在 `tests/test_app.py`。
 
 ## 客服如何运行
 
@@ -79,9 +94,9 @@ main.py      菜单入口
             → 发帖 Agent 返回结构化草稿或追问 → 连续修改 → /save 保存 JSON
 ```
 
-`app/posting_agent.py` 单独定义发帖规则，复用 `create_model()` 的模型、密钥和接口配置，发帖输出上限为 2048 tokens。程序强制先调用现有资料查询工具，查询失败时直接提示补充资料，不请求模型编造文案。查询成功后保留成对的工具消息，修改时继续携带原始资料、写作要求和历次修改结果。
+`app/posting/agent.py` 单独定义发帖规则，复用 `create_model()` 的模型、密钥和接口配置，发帖输出上限为 2048 tokens。程序强制先调用现有资料查询工具，查询失败时直接提示补充资料，不请求模型编造文案。查询成功后保留成对的工具消息，修改时继续携带原始资料、写作要求和历次修改结果。
 
-`app/posting_types.py` 定义输入 `current_game`、`tone`、`length`、`focus`，以及输出 `title`（标题）、`body`（正文）、`missing_information`（待补充信息）、`questions`（关键追问）。LangChain 的 `ToolStrategy` 按结构返回结果，并校验字段；格式不合要求时提示模型纠正，整个调用有循环上限。截断、接口错误或无法完成的结果不覆盖旧稿。
+`app/posting/schemas.py` 定义输入 `current_game`、`tone`、`length`、`focus`，以及输出 `title`（标题）、`body`（正文）、`missing_information`（待补充信息）、`questions`（关键追问）。LangChain 的 `ToolStrategy` 按结构返回结果，并校验字段；格式不合要求时提示模型纠正，整个调用有循环上限。截断、接口错误或无法完成的结果不覆盖旧稿。
 
 未确认的信息不能成为宣传承诺，文案示例和用户补充断言也不能代替商品资料。若要求依赖未确认的 DLC、永久链接等关键信息，先追问，标题正文为空；普通草稿只写已确认内容，其余列入待补充信息。可以继续要求“不写 DLC 了”，也可以更新本地资料后用 `/new` 重新查询。修改过程中出现追问时保留旧稿，但暂不允许保存，防止把旧稿误认为修改已完成。
 
@@ -96,7 +111,7 @@ main.py      菜单入口
 .\.venv\Scripts\python.exe -X utf8 -m unittest discover -v
 
 # 检查本地配置，不调用 DeepSeek。
-.\.venv\Scripts\python.exe -X utf8 -m app.config
+.\.venv\Scripts\python.exe -X utf8 -m app.core.config
 
 # 普通问答学习示例，不自动查询商品资料。
 .\.venv\Scripts\python.exe -X utf8 -m examples.model_call

@@ -3,7 +3,7 @@
 from langgraph.errors import GraphRecursionError
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
-from app.customer_agent import CustomerAgent
+from app.customer.agent import CustomerAgent
 
 
 def main():
