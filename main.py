@@ -1,6 +1,7 @@
 """项目启动入口：在项目根目录执行 python main.py。"""
 
 from app.chat_cli import main as run_customer_chat
+from app.posting_cli import main as run_posting
 
 
 def main():
@@ -10,7 +11,7 @@ def main():
     # 循环显示菜单，直到用户选择退出。
     while True:
         print("\n1. 智能客服")
-        print("2. 发帖生成（暂未开发）")
+        print("2. 发帖生成")
         print("0. 退出")
         try:
             choice = input("请输入选择：").strip()
@@ -24,7 +25,8 @@ def main():
             run_customer_chat()
             print("已返回主菜单。")
         elif choice == "2":
-            print("发帖生成功能暂未开发，请选择智能客服或退出。")
+            run_posting()
+            print("已返回主菜单。")
         elif choice == "0":
             print("程序已退出，再见！")
             break
