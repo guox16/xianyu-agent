@@ -4,3 +4,5 @@ __pycache__/
 .env
 # 本地商品资料，仅保留在本机。
 /materials/
+# 本地生成的发帖草稿和写作要求。
+/drafts/

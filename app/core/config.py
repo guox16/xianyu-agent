@@ -8,8 +8,8 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 
-# config.py 位于 app 包内，项目根目录在它的上一层。
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# config.py 位于 app/core 内，向上三级定位项目根目录，不依赖启动位置。
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
