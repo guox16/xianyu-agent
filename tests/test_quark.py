@@ -54,10 +54,11 @@ class QuarkTests(unittest.TestCase):
             kb.register(["游戏甲"])
             entries = kb.entries()
             entries[0].update(status="已补充", material_file="existing.md")
+            (kb.root / "existing.md").write_text("已有资料", encoding="utf-8")
             kb._write(kb.catalog_file, entries)
             self.assertEqual(import_catalog(kb, report), 1)
             self.assertEqual(import_catalog(kb, report), 0)
-            self.assertEqual(kb.entries()[0]["material_file"], "existing.md")
+            self.assertEqual(kb.lookup("游戏甲")["content"], "已有资料")
             self.assertIsNone(kb.entries()[1]["last_attempt_at"])
 
     def test_scan_failure_does_not_change_catalog(self):

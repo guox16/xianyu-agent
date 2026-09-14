@@ -1,4 +1,4 @@
-"""研究函数由调用方提供；预览不写入正式知识库，确认后才关联资料。"""
+"""研究函数由调用方提供；先生成预览，再由入口提交为正式资料。"""
 
 import json
 from dataclasses import dataclass, field
@@ -19,12 +19,59 @@ class KnowledgeBase:
     def __init__(self, root: Path):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
-        self.catalog_file = self.root / "catalog.json"
+        self.knowledge_file = self.root / "knowledge.json"
+        # 兼容导入模块的旧属性名，实际只读写这一个文件。
+        self.catalog_file = self.knowledge_file
+
+    def materials(self):
+        """一次读取总资料文件，调用方按游戏名取出所需的一条。"""
+        return {entry["game_name"]: entry for entry in self.entries() if entry.get("content")}
+
+    def migrate_materials(self):
+        """旧目录、正文和有效预览合并；不删除旧文件，不自动重试。"""
+        entries = self.entries()
+        current = json.loads(self.knowledge_file.read_text(encoding="utf-8-sig")) if self.knowledge_file.exists() else None
+        if entries and current != entries:
+            if current is not None:
+                backup = self.root / "knowledge-before-merge.json"
+                if not backup.exists():
+                    self._write(backup, current)
+            self._write(self.knowledge_file, entries)
+            return [entry["game_name"] for entry in entries]
+        return []
 
     def entries(self):
-        if not self.catalog_file.exists():
-            return []
-        return json.loads(self.catalog_file.read_text(encoding="utf-8-sig"))
+        data = json.loads(self.knowledge_file.read_text(encoding="utf-8-sig")) if self.knowledge_file.exists() else {}
+        if isinstance(data, list):
+            entries = data
+        elif isinstance(data, dict):
+            legacy = self.root / "catalog.json"
+            entries = json.loads(legacy.read_text(encoding="utf-8-sig")) if legacy.exists() else []
+            names = {entry["game_name"] for entry in entries}
+            for name in data:
+                if name not in names:
+                    raise ValueError(f"旧知识库缺少对应登记记录：{name}")
+            for entry in entries:
+                material = data.get(entry["game_name"], {})
+                entry.update({key: value for key, value in material.items() if key != "game_name"})
+                # 迁移有效且尚未保存的旧版预览。
+                for path in (self.root / "previews").glob("*.json"):
+                    preview = json.loads(path.read_text(encoding="utf-8"))
+                    if preview["game_name"] == entry["game_name"] and preview["last_attempt_at"] == entry["last_attempt_at"] and entry.get("preview_id") != path.stem and entry.get("material_file") != path.stem + ".md":
+                        entry["pending_preview"] = dict(preview, preview_id=path.stem)
+        else:
+            raise ValueError("knowledge.json 必须是游戏记录数组。")
+        for entry in entries:
+            filename = entry.get("material_file")
+            if filename and filename.endswith(".md") and not entry.get("content"):
+                path = (self.root / filename).resolve()
+                if not path.is_relative_to(self.root.resolve()):
+                    raise ValueError("旧资料路径无效")
+                entry.update(content=path.read_text(encoding="utf-8-sig").strip(), legacy_file=filename, preview_id=path.stem)
+                entry["material_file"] = self.knowledge_file.name
+            entry.setdefault("content", None)
+            entry.setdefault("sources", [])
+        return entries
 
     @staticmethod
     def _write(path, value):
@@ -43,20 +90,22 @@ class KnowledgeBase:
             name = name.strip()
             if name and name.casefold() not in names:
                 entries.append(dict(game_name=name, aliases=[], material_file=None,
-                                    status="待补充", reason="", last_attempt_at=None))
+                                    status="待补充", reason="", last_attempt_at=None, content=None, sources=[]))
                 names.add(name.casefold())
         self._write(self.catalog_file, entries)
 
-    def process(self, research, statuses=("待补充", "补充失败", "名称待确认")):
+    def process(self, research, statuses=("待补充", "补充失败", "名称待确认"), game_names=None):
         """research(game_name) 返回 ResearchResult；单款查询异常不终止整轮。
 
         research 应检索并核对可靠网页，只提供来源支持的事实；不能把官方
         版本、配置或价格直接当作卖家安装包、售价和交付承诺。
-        返回本轮各款处理结果，预览保存在 previews/，等待显式确认。
+        返回本轮各款处理结果，预览暂存在同一记录的 pending_preview 中。
         """
         outcomes = []
         for snapshot in self.entries():
             if snapshot["status"] not in statuses:
+                continue
+            if game_names is not None and snapshot["game_name"] not in game_names:
                 continue
             entries = self.entries()
             entry = next(item for item in entries if item["game_name"] == snapshot["game_name"])
@@ -72,16 +121,15 @@ class KnowledgeBase:
             entry["last_attempt_at"] = attempted
             if usable:
                 preview_id = uuid4().hex
-                directory = self.root / "previews"
-                directory.mkdir(exist_ok=True)
-                self._write(directory / f"{preview_id}.json", dict(
+                entry["pending_preview"] = dict(
                     game_name=entry["game_name"], content=result.content,
-                    sources=result.sources, last_attempt_at=attempted,
-                ))
+                    sources=result.sources, last_attempt_at=attempted, preview_id=preview_id,
+                )
                 if not entry["material_file"]:
                     entry.update(status="待补充", reason="已生成预览，等待确认")
                 outcomes.append(dict(game_name=entry["game_name"], result="等待确认", preview_id=preview_id))
             else:
+                entry.pop("pending_preview", None)
                 # 更新失败时保留此前确认的资料；新游戏资料文件仍为空。
                 if not entry["material_file"]:
                     entry["status"] = "名称待确认" if result.status == "名称待确认" else "补充失败"
@@ -91,20 +139,23 @@ class KnowledgeBase:
         return outcomes
 
     def confirm(self, preview_id):
-        """调用方展示预览并获得用户确认后调用。拒绝过期预览。"""
+        """用户确认或已选择自动保存模式后调用。拒绝过期预览。"""
         if len(preview_id) != 32 or any(c not in "0123456789abcdef" for c in preview_id):
             raise ValueError("预览编号无效")
-        preview = json.loads((self.root / "previews" / f"{preview_id}.json").read_text(encoding="utf-8"))
         entries = self.entries()
-        entry = next(item for item in entries if item["game_name"] == preview["game_name"])
+        entry = next((item for item in entries if item.get("pending_preview", {}).get("preview_id") == preview_id), None)
+        if entry is None:
+            raise ValueError("预览不存在或已过期")
+        preview = entry["pending_preview"]
         if entry["last_attempt_at"] != preview["last_attempt_at"]:
             raise ValueError("预览已过期，请查看最新查询结果")
-        filename = f"{preview_id}.md"
         content = preview["content"] + "\n\n## 资料来源\n\n" + "\n".join(f"- {url}" for url in preview["sources"]) + "\n"
-        (self.root / filename).write_text(content, encoding="utf-8")
-        entry.update(material_file=filename, status="已补充", reason="")
+        entry.update(content=content, sources=preview["sources"],
+                     updated_at=preview["last_attempt_at"], preview_id=preview_id)
+        entry.pop("pending_preview")
+        entry.update(material_file=self.knowledge_file.name, status="已补充", reason="")
         self._write(self.catalog_file, entries)
-        return self.root / filename
+        return self.knowledge_file
 
     def lookup(self, name):
         """先匹配目录；资料缺失不能解释为没有这个游戏。"""
@@ -117,12 +168,8 @@ class KnowledgeBase:
             return dict(registered=None, message="存在同名或别名冲突，需要卖家确认。")
         entry = matches[0]
         result = dict(entry, registered=True, content=None)
-        if entry["status"] == "已补充" and entry["material_file"]:
-            path = (self.root / entry["material_file"]).resolve()
-            if path.is_relative_to(self.root.resolve()) and path.suffix == ".md":
-                try:
-                    result["content"] = path.read_text(encoding="utf-8-sig").strip() or None
-                except (OSError, UnicodeError):
-                    pass
+        result.pop("pending_preview", None)
+        if entry["status"] == "已补充":
+            result["content"] = entry.get("content") or None
         result["message"] = "读取知识库回答。" if result["content"] else "仓库已登记该游戏，但具体版本、配置等尚未确认。"
         return result

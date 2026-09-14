@@ -9,7 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
-from app.config import PROJECT_ROOT
+from app.core.config import PROJECT_ROOT
 from app.knowledge.workflow import KnowledgeBase
 
 API = "https://drive-m.quark.cn/1/clouddrive/share/sharepage/"
@@ -134,7 +134,8 @@ def import_catalog(kb, report):
         if key in names:
             continue
         entries.append(dict(game_name=game["game_name"], aliases=[], material_file=None,
-                            status=game["status"], reason=game["reason"], last_attempt_at=None))
+                            status=game["status"], reason=game["reason"], last_attempt_at=None,
+                            content=None, sources=[]))
         names.add(key)
         added += 1
     kb._write(kb.catalog_file, entries)
@@ -146,7 +147,7 @@ def main():
     parser.add_argument("url", help="夸克分享链接")
     parser.add_argument("--passcode", default="", help="分享提取码（如有）")
     parser.add_argument("--root", type=Path, default=PROJECT_ROOT / "materials")
-    parser.add_argument("--import-catalog", action="store_true", help="把扫描结果登记到 catalog.json")
+    parser.add_argument("--import-catalog", action="store_true", help="把扫描结果登记到 knowledge.json")
     args = parser.parse_args()
     try:
         print("正在读取分享目录……", flush=True)
