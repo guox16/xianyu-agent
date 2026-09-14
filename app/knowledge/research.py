@@ -1,4 +1,4 @@
-"""从 Steam 商店读取参考资料；不使用模型猜测售价、安装包版本或售后承诺。"""
+"""分层查询参考资料；不使用模型猜测售价、安装包版本或售后承诺。"""
 
 import json
 import re
@@ -23,7 +23,7 @@ def normalize(name):
     return re.sub(r"\s+", "", name).casefold()
 
 
-def research_game(game_name):
+def research_steam(game_name):
     """只接受唯一的完整名称匹配；译名和版本名不一致时留给人工确认。"""
     result = get_json("storesearch/", term=game_name, l="schinese", cc="CN")
     if not isinstance(result.get("items"), list):
@@ -58,3 +58,22 @@ def research_game(game_name):
                   "本店安装包版本、包含的 DLC、售价、交付方式、语言、联机支持、兼容性和售后政策尚未确认。",
                   "以上为 Steam 商店参考资料，不代表仓库安装包具备相同内容或功能。"])
     return ResearchResult(content="\n".join(lines), sources=[f"https://store.steampowered.com/app/{app_id}/"])
+
+
+def research_game(game_name):
+    """按层降级；单个来源不可用不会阻止其他来源，不自动重试。"""
+    from app.knowledge.web_sources import research_official, research_wikipedia, research_baidu
+
+    reasons, ambiguous = [], False
+    for label, provider in (("Steam", research_steam), ("官网/其他商店", research_official),
+                            ("维基百科", research_wikipedia), ("百度", research_baidu)):
+        try:
+            result = provider(game_name)
+        except Exception as error:
+            reasons.append(f"{label}：查询异常（{type(error).__name__}）")
+            continue
+        if result.content.strip() and result.sources:
+            return result
+        ambiguous = ambiguous or result.status == "名称待确认"
+        reasons.append(f"{label}：{result.reason}")
+    return ResearchResult(status="名称待确认" if ambiguous else "补充失败", reason="；".join(reasons))

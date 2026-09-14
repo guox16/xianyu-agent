@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from app.knowledge.main import generate, main, pending_previews, update_from_share
-from app.knowledge.research import research_game
+from app.knowledge.research import research_steam
 from app.knowledge.workflow import KnowledgeBase, ResearchResult
 
 
@@ -101,7 +101,7 @@ class KnowledgeMainTests(unittest.TestCase):
 class SteamResearchTests(unittest.TestCase):
     def test_non_exact_match_does_not_use_wrong_game(self):
         with patch("app.knowledge.research.get_json", return_value={"items": [{"id": 620, "name": "Portal 2"}]}) as fetch:
-            result = research_game("Portal")
+            result = research_steam("Portal")
             self.assertEqual(result.status, "名称待确认")
             self.assertFalse(result.content)
             self.assertEqual(fetch.call_count, 1)
@@ -113,7 +113,7 @@ class SteamResearchTests(unittest.TestCase):
                 "short_description": "<b>解谜游戏</b>", "pc_requirements": {"minimum": "内存<br>2 GB"},
                 "price_overview": {"final_formatted": "¥ 99"}}}},
         ]):
-            result = research_game("Portal")
+            result = research_steam("Portal")
             self.assertIn("解谜游戏", result.content)
             self.assertIn("内存\n2 GB", result.content)
             self.assertNotIn("99", result.content)
