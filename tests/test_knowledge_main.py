@@ -66,7 +66,7 @@ class KnowledgeMainTests(unittest.TestCase):
             self.assertEqual(kb.entries()[2]["status"], "补充失败")
             self.assertIsNone(kb.entries()[2]["material_file"])
             self.assertEqual(pending_previews(kb), {})
-            self.assertTrue((kb.root / "generation-report.json").exists())
+            self.assertFalse((kb.root / "generation-report.json").exists())
 
     def test_existing_preview_is_saved_without_research(self):
         with TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):

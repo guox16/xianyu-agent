@@ -44,13 +44,11 @@ def save_preview(kb, name, preview_id):
     return dict(game_name=name, result="已保存", material_file=path.name)
 
 
-def show_summary(kb, results):
+def show_summary(results):
     print("\n本轮处理完成：")
     for status in ("已保存", "补充失败"):
         items = [item for item in results if item["result"] == status]
         print(f"{status}：{len(items)} 条")
-    kb._write(kb.root / "generation-report.json", results)
-    print(f"处理清单：{kb.root / 'generation-report.json'}")
 
 
 def generate(kb, research=research_game):
@@ -78,7 +76,7 @@ def generate(kb, research=research_game):
             result = dict(game_name=name, result="补充失败", reason=f"处理或写入失败：{error}")
         results.append(result)
         print(f"{name}：{result['result']}")
-    show_summary(kb, results)
+    show_summary(results)
     return results
 
 

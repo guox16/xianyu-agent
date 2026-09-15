@@ -8,15 +8,15 @@ from app.knowledge.workflow import ResearchResult
 
 
 class ResearchLayerTests(unittest.TestCase):
-    def test_wiki_success_stops_without_translation_or_second_steam_query(self):
+    def test_wiki_success_stops_without_deepseek(self):
         wiki = ResearchResult(content="欧卡百科", sources=["https://zh.wikipedia.org/wiki/欧洲卡车模拟2"],
                               aliases=["Euro Truck Simulator 2"])
         with patch("app.knowledge.research.research_steam", return_value=ResearchResult()) as search, \
-                patch("app.knowledge.research.translate_name") as translate, \
+                patch("app.knowledge.research.research_deepseek") as deepseek, \
                 patch("app.knowledge.web_sources.research_wikipedia", return_value=wiki):
             result = research_game("欧洲卡车模拟2")
             search.assert_called_once_with("欧洲卡车模拟2")
-            translate.assert_not_called()
+            deepseek.assert_not_called()
             self.assertIn("欧卡百科", result.content)
             self.assertEqual(len(result.sources), 1)
             self.assertEqual(result.aliases, ["Euro Truck Simulator 2"])
@@ -52,14 +52,13 @@ class ResearchLayerTests(unittest.TestCase):
     def test_final_failure_keeps_each_source_reason(self):
         with patch("app.knowledge.research.research_steam", return_value=ResearchResult(reason="搜不到")), \
                 patch("app.knowledge.research.research_deepseek", return_value=ResearchResult(reason="未找到资料")), \
-                patch("app.knowledge.research.translate_name", side_effect=ValueError("额度用完")), \
                 patch("app.knowledge.web_sources.research_wikipedia", return_value=ResearchResult(status="补充失败", reason="同名")):
             result = research_game("游戏")
             self.assertEqual(result.status, "补充失败")
-            for label in ["Steam", "维基百科", "MyMemory", "DeepSeek"]:
+            for label in ["Steam", "维基百科", "DeepSeek"]:
                 self.assertIn(label, result.reason)
 
-    def test_translation_fallback_order_and_no_unverified_alias(self):
+    def test_deepseek_fallback_runs_directly_after_source_failures(self):
         calls = []
         def steam(name):
             calls.append(name)
@@ -67,17 +66,15 @@ class ResearchLayerTests(unittest.TestCase):
         def wiki(name):
             calls.append("wiki")
             return ResearchResult()
-        def translate(name):
-            calls.append("translate")
-            return "Caribbean Legend"
         with patch("app.knowledge.research.research_steam", side_effect=steam), \
                 patch("app.knowledge.web_sources.research_wikipedia", side_effect=wiki), \
-                patch("app.knowledge.research.translate_name", side_effect=translate):
+                patch("app.knowledge.research.research_deepseek", return_value=ResearchResult(
+                    content="AI 简要资料", model_generated=True)):
             result = research_game("加勒比传奇")
-        self.assertEqual(calls, ["加勒比传奇", "wiki", "translate", "Caribbean Legend"])
-        self.assertIn("加勒比传奇", result.content)
+        self.assertEqual(calls, ["加勒比传奇", "wiki"])
+        self.assertEqual(result.content, "AI 简要资料")
         self.assertEqual(result.aliases, [])
-        self.assertEqual(result.sources, ["https://store.steampowered.com/app/1/"])
+        self.assertEqual(result.sources, [])
 
     def test_wiki_reads_actual_article_not_search_snippet(self):
         payload = {"query": {"pages": [{"pageid": 1, "title": "傳送門", "extract": "传送门是一款电子游戏。\n后文", "fullurl": "https://zh.wikipedia.org/wiki/傳送門"}]}}

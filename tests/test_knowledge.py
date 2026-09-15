@@ -103,6 +103,17 @@ class KnowledgeTests(unittest.TestCase):
             self.assertEqual(kb.entries()[0]["status"], "补充失败")
             self.assertIsNone(kb.entries()[0]["material_file"])
 
+    def test_model_generated_material_is_saved_without_fabricated_source_link(self):
+        with TemporaryDirectory() as directory:
+            kb = KnowledgeBase(Path(directory))
+            kb.register(["冷门游戏"])
+            outcome = kb.process(lambda _: ResearchResult(content="待核验 AI 资料", model_generated=True))[0]
+            kb.confirm(outcome["preview_id"])
+            entry = kb.entries()[0]
+            self.assertEqual(entry["status"], "已补充")
+            self.assertEqual(entry["sources"], [])
+            self.assertNotIn("## 资料来源", entry["content"])
+
     def test_retry_invalidates_old_preview(self):
         with TemporaryDirectory() as directory:
             kb = KnowledgeBase(Path(directory))

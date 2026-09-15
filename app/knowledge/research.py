@@ -8,7 +8,6 @@ from urllib.request import urlopen
 
 from app.knowledge.workflow import ResearchResult
 from app.knowledge.game_names import search_name, identity_key, query_names, match_score
-from app.knowledge.translation import translate_name
 
 
 def get_json(endpoint, **params):
@@ -91,31 +90,12 @@ def research_game(game_name):
                                   "不代表已核实该版本功能、内容或配置。\n\n" + result.content)
             return result
         reasons.append(f"{label}：{result.reason}")
-    # 前两个资料来源都不可用时，翻译仅作为新的检索线索。
-    try:
-        translated = translate_name(query_name)
-    except Exception as error:
-        detail = str(error) if isinstance(error, ValueError) else type(error).__name__
-        reasons.append(f"MyMemory：{detail}")
-    else:
-        try:
-            result = research_steam(translated)
-        except Exception as error:
-            reasons.append(f"Steam 英文查询：{type(error).__name__}")
-        else:
-            if result.content.strip() and result.sources:
-                result.content = (f"# 仓库游戏：{game_name}\n\n"
-                                  f"MyMemory 候选检索名：{translated}。以下资料来自匹配的 Steam 游戏页面；"
-                                  "机器翻译不作为已确认别名，仓库安装包版本仍需核实。\n\n" + result.content)
-                result.aliases = []
-                return result
-            reasons.append(f"Steam 英文查询：{result.reason}")
     try:
         result = research_deepseek(game_name)
     except Exception as error:
         reasons.append(f"DeepSeek：{type(error).__name__}")
     else:
-        if result.content.strip() and result.sources:
+        if result.content.strip() and result.model_generated:
             return result
         reasons.append(f"DeepSeek：{result.reason}")
     return ResearchResult(reason="；".join(reasons))

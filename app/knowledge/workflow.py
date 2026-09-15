@@ -16,6 +16,7 @@ class ResearchResult:
     status: str = "补充失败"
     reason: str = "未找到有依据的资料"
     aliases: list[str] = field(default_factory=list)
+    model_generated: bool = False
 
 
 class KnowledgeBase:
@@ -115,9 +116,10 @@ class KnowledgeBase:
             attempted = datetime.now(timezone.utc).isoformat()
             try:
                 result = research(entry["game_name"])
-                usable = bool(result.content.strip()) and bool(result.sources) and all(
-                    url.startswith(("https://", "http://")) for url in result.sources
-                )
+                usable = bool(result.content.strip()) and (
+                    result.model_generated or (bool(result.sources) and all(
+                        url.startswith(("https://", "http://")) for url in result.sources
+                    )))
             except Exception as exc:
                 result = ResearchResult(reason=f"查询失败：{type(exc).__name__}")
                 usable = False
@@ -153,7 +155,9 @@ class KnowledgeBase:
         preview = entry["pending_preview"]
         if entry["last_attempt_at"] != preview["last_attempt_at"]:
             raise ValueError("预览已过期，请查看最新查询结果")
-        content = preview["content"] + "\n\n## 资料来源\n\n" + "\n".join(f"- {url}" for url in preview["sources"]) + "\n"
+        content = preview["content"]
+        if preview["sources"]:
+            content += "\n\n## 资料来源\n\n" + "\n".join(f"- {url}" for url in preview["sources"]) + "\n"
         entry.update(content=content, sources=preview["sources"],
                      updated_at=preview["last_attempt_at"], preview_id=preview_id)
         entry["aliases"] = list(dict.fromkeys([*entry["aliases"], *preview.get("aliases", [])]))
