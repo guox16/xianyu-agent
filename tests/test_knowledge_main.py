@@ -54,7 +54,7 @@ class KnowledgeMainTests(unittest.TestCase):
                 if name == "失败游戏":
                     raise TimeoutError()
                 if name == "歧义游戏":
-                    return ResearchResult(status="名称待确认", reason="同名游戏")
+                    return ResearchResult(status="补充失败", reason="同名游戏")
                 return ResearchResult(content="已核实正文", sources=["https://example.com"])
 
             with patch("builtins.input", side_effect=AssertionError("批量生成不应询问")) as ask:
@@ -63,7 +63,7 @@ class KnowledgeMainTests(unittest.TestCase):
             self.assertEqual(kb.entries()[0]["status"], "补充失败")
             self.assertEqual(kb.entries()[1]["status"], "已补充")
             self.assertIn("已核实正文", kb.lookup("成功游戏")["content"])
-            self.assertEqual(kb.entries()[2]["status"], "名称待确认")
+            self.assertEqual(kb.entries()[2]["status"], "补充失败")
             self.assertIsNone(kb.entries()[2]["material_file"])
             self.assertEqual(pending_previews(kb), {})
             self.assertTrue((kb.root / "generation-report.json").exists())
@@ -102,7 +102,7 @@ class SteamResearchTests(unittest.TestCase):
     def test_non_exact_match_does_not_use_wrong_game(self):
         with patch("app.knowledge.research.get_json", return_value={"items": [{"id": 620, "name": "Portal 2"}]}) as fetch:
             result = research_steam("Portal")
-            self.assertEqual(result.status, "名称待确认")
+            self.assertEqual(result.status, "补充失败")
             self.assertFalse(result.content)
             self.assertEqual(fetch.call_count, 1)
 

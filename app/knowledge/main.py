@@ -40,13 +40,13 @@ def save_preview(kb, name, preview_id):
     try:
         path = kb.confirm(preview_id)
     except (OSError, ValueError) as error:
-        return dict(game_name=name, result="保存失败", reason=str(error))
+        return dict(game_name=name, result="补充失败", reason=f"保存失败：{error}")
     return dict(game_name=name, result="已保存", material_file=path.name)
 
 
 def show_summary(kb, results):
     print("\n本轮处理完成：")
-    for status in ("已保存", "补充失败", "名称待确认", "保存失败"):
+    for status in ("已保存", "补充失败"):
         items = [item for item in results if item["result"] == status]
         print(f"{status}：{len(items)} 条")
     kb._write(kb.root / "generation-report.json", results)
@@ -55,7 +55,7 @@ def show_summary(kb, results):
 
 def generate(kb, research=research_game):
     pending = pending_previews(kb)
-    entries = [entry for entry in kb.entries() if entry["status"] in {"待补充", "补充失败", "名称待确认"}]
+    entries = [entry for entry in kb.entries() if entry["status"] in {"待补充", "补充失败"}]
     if not entries:
         print("没有需要处理的条目。")
         return []
@@ -64,15 +64,18 @@ def generate(kb, research=research_game):
     for index, entry in enumerate(entries, 1):
         name = entry["game_name"]
         print(f"\n[{index}/{len(entries)}] 正在查询：{name}", flush=True)
-        if name in pending:
-            result = save_preview(kb, name, pending[name][0])
-        else:
-            outcome = kb.process(research, game_names=[name])[0]
-            if outcome["result"] == "等待确认":
-                result = save_preview(kb, name, outcome["preview_id"])
+        try:
+            if name in pending:
+                result = save_preview(kb, name, pending[name][0])
             else:
-                current = next(item for item in kb.entries() if item["game_name"] == name)
-                result = dict(game_name=name, result=current["status"], reason=outcome["reason"])
+                outcome = kb.process(research, game_names=[name])[0]
+                if outcome["result"] == "等待确认":
+                    result = save_preview(kb, name, outcome["preview_id"])
+                else:
+                    current = next(item for item in kb.entries() if item["game_name"] == name)
+                    result = dict(game_name=name, result=current["status"], reason=outcome["reason"])
+        except (OSError, ValueError) as error:
+            result = dict(game_name=name, result="补充失败", reason=f"处理或写入失败：{error}")
         results.append(result)
         print(f"{name}：{result['result']}")
     show_summary(kb, results)

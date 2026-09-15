@@ -48,7 +48,7 @@ def reference(name, text, url, label):
 
 
 def research_wikipedia(name):
-    failures, ambiguous = [], False
+    failures = []
     for language in ("zh", "en"):
         # 标题查询使用维基自身重定向和简繁转换，不自行猜测别名。
         titles = [title + suffix for title in query_names(name)
@@ -67,12 +67,10 @@ def research_wikipedia(name):
                 if page.get("missing"):
                     continue
                 if "disambiguation" in page.get("pageprops", {}):
-                    ambiguous = True
                     continue
                 text = page.get("extract", "").strip()
                 # 介绍开头须表明这是游戏，排除同名电影、小说等页面。
                 if not is_game(text[:350]) or re.search(r"游戏系列|遊戲系列|video game (?:series|franchise)", text[:350], re.I):
-                    ambiguous = True
                     continue
                 url = page.get("fullurl", "")
                 if text and host_in(url, {f"{language}.wikipedia.org"}):
@@ -86,8 +84,8 @@ def research_wikipedia(name):
                 result.aliases = aliases
                 return result
             if len(matches) > 1:
-                return ResearchResult(status="名称待确认", reason="维基百科有多个同名游戏条目")
+                return ResearchResult(status="补充失败", reason="维基百科有多个同名游戏条目")
         except (OSError, ValueError) as error:
             failures.append(f"{language}：{type(error).__name__}")
-    return ResearchResult(status="名称待确认" if ambiguous else "补充失败",
+    return ResearchResult(status="补充失败",
                           reason="维基百科没有唯一可用的游戏条目" + ("；" + "、".join(failures) if failures else ""))

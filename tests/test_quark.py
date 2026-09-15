@@ -48,7 +48,7 @@ class QuarkTests(unittest.TestCase):
             report = scan(client)
         self.assertEqual(len(report["games"]), 3)
         self.assertEqual(len(report["skipped"]), 2)
-        self.assertEqual(report["games"][-1]["status"], "名称待确认")
+        self.assertEqual(report["games"][-1]["status"], "补充失败")
         with TemporaryDirectory() as directory:
             kb = KnowledgeBase(Path(directory))
             kb.register(["游戏甲"])

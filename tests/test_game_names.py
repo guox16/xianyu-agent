@@ -28,7 +28,7 @@ class GameNameTests(unittest.TestCase):
     def test_exact_match_wins_and_tied_short_matches_remain_ambiguous(self):
         candidates = [{"id": 1, "name": "游戏3：甲"}, {"id": 2, "name": "游戏3：乙"}]
         with patch("app.knowledge.research.get_json", return_value={"items": candidates}) as fetch:
-            self.assertEqual(research_steam("游戏3").status, "名称待确认")
+            self.assertEqual(research_steam("游戏3").status, "补充失败")
             self.assertEqual(fetch.call_count, 1)
         with patch("app.knowledge.research.get_json", side_effect=[
             {"items": candidates + [{"id": 3, "name": "游戏3"}]},

@@ -40,17 +40,17 @@ def research_steam(game_name):
         if matches:
             break
     if not matches:
-        return ResearchResult(status="名称待确认" if items else "补充失败",
+        return ResearchResult(status="补充失败",
                               reason="Steam 没有匹配到对应作品，可能存在译名差异" if items else "Steam 未搜到该游戏")
     if len(matches) != 1:
-        return ResearchResult(status="名称待确认", reason="Steam 存在多个同名条目")
+        return ResearchResult(status="补充失败", reason="Steam 存在多个同名条目")
     app_id = next(iter(matches))
     detail = get_json("appdetails", appids=app_id, l="schinese", cc="CN").get(app_id, {})
     if not detail.get("success"):
         return ResearchResult(reason="Steam 详情不可访问")
     data = detail["data"]
     if data.get("type") != "game" or not match_score(game_name, data.get("name", "")):
-        return ResearchResult(status="名称待确认", reason="详情名称或商品类型不匹配")
+        return ResearchResult(status="补充失败", reason="详情名称或商品类型不匹配")
     description = plain(data.get("short_description"))
     if not description:
         return ResearchResult(reason="Steam 缺少可用游戏介绍")
@@ -73,7 +73,7 @@ def research_game(game_name):
     """按层降级；单个来源不可用不会阻止其他来源，不自动重试。"""
     from app.knowledge.web_sources import research_wikipedia
 
-    reasons, ambiguous = [], False
+    reasons = []
     query_name = search_name(game_name)
     for label, provider in (("Steam", research_steam), ("维基百科", research_wikipedia)):
         try:
@@ -87,7 +87,6 @@ def research_game(game_name):
                                   f"检索使用基础名称：{query_name}。版本后缀仅用于名称匹配，"
                                   "不代表已核实该版本功能、内容或配置。\n\n" + result.content)
             return result
-        ambiguous = ambiguous or result.status == "名称待确认"
         reasons.append(f"{label}：{result.reason}")
     # 前两个资料来源都不可用时，翻译仅作为新的检索线索。
     try:
@@ -107,6 +106,18 @@ def research_game(game_name):
                                   "机器翻译不作为已确认别名，仓库安装包版本仍需核实。\n\n" + result.content)
                 result.aliases = []
                 return result
-            ambiguous = ambiguous or result.status == "名称待确认"
             reasons.append(f"Steam 英文查询：{result.reason}")
-    return ResearchResult(status="名称待确认" if ambiguous else "补充失败", reason="；".join(reasons))
+    try:
+        result = research_deepseek(game_name)
+    except Exception as error:
+        reasons.append(f"DeepSeek：{type(error).__name__}")
+    else:
+        if result.content.strip() and result.sources:
+            return result
+        reasons.append(f"DeepSeek：{result.reason}")
+    return ResearchResult(reason="；".join(reasons))
+
+
+def research_deepseek(game_name):
+    from app.knowledge.deepseek_fallback import research_with_deepseek
+    return research_with_deepseek(game_name)

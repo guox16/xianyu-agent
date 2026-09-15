@@ -63,6 +63,8 @@ class KnowledgeBase:
         else:
             raise ValueError("knowledge.json 必须是游戏记录数组。")
         for entry in entries:
+            if entry.get("status") in {"名称待确认", "保存失败"}:
+                entry["status"] = "补充失败"
             filename = entry.get("material_file")
             if filename and filename.endswith(".md") and not entry.get("content"):
                 path = (self.root / filename).resolve()
@@ -95,7 +97,7 @@ class KnowledgeBase:
                 names.add(name.casefold())
         self._write(self.catalog_file, entries)
 
-    def process(self, research, statuses=("待补充", "补充失败", "名称待确认"), game_names=None):
+    def process(self, research, statuses=("待补充", "补充失败"), game_names=None):
         """research(game_name) 返回 ResearchResult；单款查询异常不终止整轮。
 
         research 应检索并核对可靠网页，只提供来源支持的事实；不能把官方
@@ -134,7 +136,7 @@ class KnowledgeBase:
                 entry.pop("pending_preview", None)
                 # 更新失败时保留此前确认的资料；新游戏资料文件仍为空。
                 if not entry["material_file"]:
-                    entry["status"] = "名称待确认" if result.status == "名称待确认" else "补充失败"
+                    entry["status"] = "补充失败"
                 entry["reason"] = result.reason or "未找到有依据的资料"
                 outcomes.append(dict(game_name=entry["game_name"], result="补充失败", reason=entry["reason"]))
             self._write(self.catalog_file, entries)

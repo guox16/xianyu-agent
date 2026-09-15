@@ -93,7 +93,7 @@ def candidate(item, path):
     certain = len(titles) == 1 and titles[0].strip() != ""
     return dict(
         game_name=titles[0].strip() if certain else raw,
-        status="待补充" if certain else "名称待确认",
+        status="待补充" if certain else "补充失败",
         reason="" if certain else "目录名称无法唯一提取游戏名，需要人工确认",
         raw_name=raw, source_path="/".join(path + [raw]), fid=item["fid"],
     )

@@ -6,6 +6,17 @@ from app.knowledge import KnowledgeBase, ResearchResult
 
 
 class KnowledgeTests(unittest.TestCase):
+    def test_old_uncertain_status_is_migrated_to_failure(self):
+        with TemporaryDirectory() as directory:
+            kb = KnowledgeBase(Path(directory))
+            kb.register(["游戏"])
+            entries = kb.entries()
+            entries[0].update(status="名称待确认", reason="多个同名条目")
+            kb._write(kb.knowledge_file, entries)
+            kb.migrate_materials()
+            self.assertEqual(kb.entries()[0]["status"], "补充失败")
+            self.assertEqual(kb.entries()[0]["reason"], "多个同名条目")
+
     def test_verified_alias_is_saved_with_material_and_usable_for_lookup(self):
         with TemporaryDirectory() as directory:
             kb = KnowledgeBase(Path(directory))
@@ -76,8 +87,8 @@ class KnowledgeTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             kb = KnowledgeBase(Path(directory))
             kb.register(["同名游戏"])
-            kb.process(lambda _: ResearchResult(content="未核实内容", status="名称待确认", reason="存在同名游戏"))
-            self.assertEqual(kb.entries()[0]["status"], "名称待确认")
+            kb.process(lambda _: ResearchResult(content="未核实内容", status="补充失败", reason="存在同名游戏"))
+            self.assertEqual(kb.entries()[0]["status"], "补充失败")
             self.assertIsNone(kb.entries()[0]["material_file"])
 
     def test_retry_invalidates_old_preview(self):

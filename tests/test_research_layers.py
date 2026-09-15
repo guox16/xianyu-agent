@@ -51,11 +51,12 @@ class ResearchLayerTests(unittest.TestCase):
 
     def test_final_failure_keeps_each_source_reason(self):
         with patch("app.knowledge.research.research_steam", return_value=ResearchResult(reason="搜不到")), \
+                patch("app.knowledge.research.research_deepseek", return_value=ResearchResult(reason="未找到资料")), \
                 patch("app.knowledge.research.translate_name", side_effect=ValueError("额度用完")), \
-                patch("app.knowledge.web_sources.research_wikipedia", return_value=ResearchResult(status="名称待确认", reason="同名")):
+                patch("app.knowledge.web_sources.research_wikipedia", return_value=ResearchResult(status="补充失败", reason="同名")):
             result = research_game("游戏")
-            self.assertEqual(result.status, "名称待确认")
-            for label in ["Steam", "维基百科", "MyMemory"]:
+            self.assertEqual(result.status, "补充失败")
+            for label in ["Steam", "维基百科", "MyMemory", "DeepSeek"]:
                 self.assertIn(label, result.reason)
 
     def test_translation_fallback_order_and_no_unverified_alias(self):
