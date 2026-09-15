@@ -7,6 +7,8 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from app.knowledge.workflow import ResearchResult
+from app.knowledge.game_names import search_name, identity_key, query_names, match_score
+from app.knowledge.translation import translate_name
 
 
 def get_json(endpoint, **params):
@@ -20,19 +22,26 @@ def plain(value):
 
 
 def normalize(name):
-    return re.sub(r"\s+", "", name).casefold()
+    return identity_key(name)
 
 
 def research_steam(game_name):
-    """只接受唯一的完整名称匹配；译名和版本名不一致时留给人工确认。"""
-    result = get_json("storesearch/", term=game_name, l="schinese", cc="CN")
-    if not isinstance(result.get("items"), list):
-        raise ValueError("Steam 搜索响应格式无效")
-    items = result["items"]
-    matches = {str(item["id"]): item for item in items if normalize(item["name"]) == normalize(game_name)}
+    """忽略明确版本后缀；仍要求作品名称唯一匹配。"""
+    items = []
+    matches = {}
+    for term in query_names(game_name):
+        result = get_json("storesearch/", term=term, l="schinese", cc="CN")
+        if not isinstance(result.get("items"), list):
+            raise ValueError("Steam 搜索响应格式无效")
+        items.extend(result["items"])
+        scored = [(match_score(game_name, item["name"]), item) for item in items]
+        best = max((score for score, _ in scored), default=0)
+        matches = {str(item["id"]): item for score, item in scored if score == best and score > 0}
+        if matches:
+            break
     if not matches:
         return ResearchResult(status="名称待确认" if items else "补充失败",
-                              reason="Steam 未找到完整名称匹配，可能存在译名或版本差异" if items else "Steam 未搜到该游戏")
+                              reason="Steam 没有匹配到对应作品，可能存在译名差异" if items else "Steam 未搜到该游戏")
     if len(matches) != 1:
         return ResearchResult(status="名称待确认", reason="Steam 存在多个同名条目")
     app_id = next(iter(matches))
@@ -40,12 +49,12 @@ def research_steam(game_name):
     if not detail.get("success"):
         return ResearchResult(reason="Steam 详情不可访问")
     data = detail["data"]
-    if data.get("type") != "game" or normalize(data.get("name", "")) != normalize(game_name):
+    if data.get("type") != "game" or not match_score(game_name, data.get("name", "")):
         return ResearchResult(status="名称待确认", reason="详情名称或商品类型不匹配")
     description = plain(data.get("short_description"))
     if not description:
         return ResearchResult(reason="Steam 缺少可用游戏介绍")
-    lines = [f"# {game_name}", "", "## 官方商店参考资料", "", description]
+    lines = [f"# {game_name}", "", f"来源作品名称：{data['name']}", "", "## 官方商店参考资料", "", description]
     for label, key in [("开发商", "developers"), ("发行商", "publishers")]:
         if data.get(key):
             lines.extend(["", f"{label}：{'、'.join(data[key])}"])
@@ -62,18 +71,42 @@ def research_steam(game_name):
 
 def research_game(game_name):
     """按层降级；单个来源不可用不会阻止其他来源，不自动重试。"""
-    from app.knowledge.web_sources import research_official, research_wikipedia, research_baidu
+    from app.knowledge.web_sources import research_wikipedia
 
     reasons, ambiguous = [], False
-    for label, provider in (("Steam", research_steam), ("官网/其他商店", research_official),
-                            ("维基百科", research_wikipedia), ("百度", research_baidu)):
+    query_name = search_name(game_name)
+    for label, provider in (("Steam", research_steam), ("维基百科", research_wikipedia)):
         try:
-            result = provider(game_name)
+            result = provider(query_name)
         except Exception as error:
             reasons.append(f"{label}：查询异常（{type(error).__name__}）")
             continue
         if result.content.strip() and result.sources:
+            if query_name != game_name:
+                result.content = (f"# 仓库游戏：{game_name}\n\n"
+                                  f"检索使用基础名称：{query_name}。版本后缀仅用于名称匹配，"
+                                  "不代表已核实该版本功能、内容或配置。\n\n" + result.content)
             return result
         ambiguous = ambiguous or result.status == "名称待确认"
         reasons.append(f"{label}：{result.reason}")
+    # 前两个资料来源都不可用时，翻译仅作为新的检索线索。
+    try:
+        translated = translate_name(query_name)
+    except Exception as error:
+        detail = str(error) if isinstance(error, ValueError) else type(error).__name__
+        reasons.append(f"MyMemory：{detail}")
+    else:
+        try:
+            result = research_steam(translated)
+        except Exception as error:
+            reasons.append(f"Steam 英文查询：{type(error).__name__}")
+        else:
+            if result.content.strip() and result.sources:
+                result.content = (f"# 仓库游戏：{game_name}\n\n"
+                                  f"MyMemory 候选检索名：{translated}。以下资料来自匹配的 Steam 游戏页面；"
+                                  "机器翻译不作为已确认别名，仓库安装包版本仍需核实。\n\n" + result.content)
+                result.aliases = []
+                return result
+            ambiguous = ambiguous or result.status == "名称待确认"
+            reasons.append(f"Steam 英文查询：{result.reason}")
     return ResearchResult(status="名称待确认" if ambiguous else "补充失败", reason="；".join(reasons))

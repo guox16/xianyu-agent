@@ -6,6 +6,16 @@ from app.knowledge import KnowledgeBase, ResearchResult
 
 
 class KnowledgeTests(unittest.TestCase):
+    def test_verified_alias_is_saved_with_material_and_usable_for_lookup(self):
+        with TemporaryDirectory() as directory:
+            kb = KnowledgeBase(Path(directory))
+            kb.register(["欧洲卡车模拟2"])
+            outcome = kb.process(lambda _: ResearchResult(content="官方资料", sources=["https://example.com"],
+                                                         aliases=["Euro Truck Simulator 2"]))[0]
+            self.assertEqual(kb.entries()[0]["aliases"], [])
+            kb.confirm(outcome["preview_id"])
+            self.assertIn("官方资料", kb.lookup("Euro Truck Simulator 2")["content"])
+
     def test_multiple_games_share_one_file_and_updates_are_isolated(self):
         with TemporaryDirectory() as directory:
             kb = KnowledgeBase(Path(directory))

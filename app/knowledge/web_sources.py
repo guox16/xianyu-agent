@@ -1,22 +1,14 @@
-"""补充来源：官网/发行商、维基百科、百度检索落地页。"""
+"""维基百科公开资料与跨语言名称查询。"""
 
 import json
 import re
-from html.parser import HTMLParser
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, HTTPRedirectHandler, build_opener
 
 from app.knowledge.workflow import ResearchResult
+from app.knowledge.game_names import query_names
 
-# 仅把已知商店、开发商和发行商域名当作官方来源，不相信搜索标题中的“官网”。
-OFFICIAL_HOSTS = {
-    "store.epicgames.com", "gog.com", "ea.com", "ubisoft.com", "capcom.com",
-    "nintendo.com", "playstation.com", "xbox.com", "rockstargames.com",
-    "square-enix-games.com", "bandainamcoent.com", "valvesoftware.com",
-    "bethesda.net", "blizzard.com", "cdprojektred.com",
-}
-REFERENCE_HOSTS = {"baike.baidu.com", "ign.com", "gamespot.com", "pcgamingwiki.com"}
-NETWORK_HOSTS = OFFICIAL_HOSTS | REFERENCE_HOSTS | {"www.baidu.com", "zh.wikipedia.org", "en.wikipedia.org"}
+NETWORK_HOSTS = {"zh.wikipedia.org", "en.wikipedia.org"}
 
 
 def host_in(url, hosts):
@@ -45,64 +37,6 @@ def fetch(url):
         return raw.decode(response.headers.get_content_charset() or "utf-8"), response.url
 
 
-class Page(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.title, self.description, self.paragraphs, self.links = "", "", [], []
-        self.in_title = False
-        self.in_p = False
-        self.paragraph = ""
-        self.hidden = 0
-
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag in {"script", "style"}:
-            self.hidden += 1
-        if tag == "title":
-            self.in_title = True
-        if tag == "p":
-            self.in_p, self.paragraph = True, ""
-        if tag == "meta" and (attrs.get("name", "").lower() == "description" or attrs.get("property") == "og:description"):
-            self.description = attrs.get("content", "")
-        for key in ("mu", "data-landurl"):
-            if attrs.get(key):
-                self.links.append(attrs[key])
-        if tag == "a" and attrs.get("href"):
-            self.links.append(attrs["href"])
-
-    def handle_endtag(self, tag):
-        if tag in {"script", "style"}:
-            self.hidden = max(0, self.hidden - 1)
-        if tag == "title":
-            self.in_title = False
-        if tag == "p":
-            self.in_p = False
-            if self.paragraph.strip():
-                self.paragraphs.append(self.paragraph.strip())
-
-    def handle_data(self, data):
-        if not self.hidden:
-            if self.in_title:
-                self.title += data
-            if self.in_p:
-                self.paragraph += data
-
-
-def name_key(text):
-    return re.sub(r"[\W_]+", "", text).casefold()
-
-
-def has_identity(name, text):
-    # 只接受完整标题片段，避免把 Portal 2 当成 Portal。
-    pieces = re.split(r"[|｜–—]|\s-\s", text)
-    for piece in pieces:
-        piece = re.sub(r"\s*\((?:video game|电子游戏|電子遊戲|游戏|遊戲)\)\s*$", "", piece, flags=re.I)
-        piece = re.sub(r"(?:官方网站|官方網站|官网|Official (?:Site|Website))\s*$", "", piece, flags=re.I)
-        if name_key(piece) == name_key(name):
-            return True
-    return False
-
-
 def is_game(text):
     return bool(re.search(r"电子游戏|電子遊戲|电脑游戏|電腦遊戲|游戏|遊戲|video game|videogame|gameplay", text, re.I))
 
@@ -113,62 +47,14 @@ def reference(name, text, url, label):
         "以上为外部参考资料，不代表卖家安装包内容。"), sources=[url])
 
 
-def baidu_links(name, official=False):
-    query = name + (" 游戏 官网 开发商" if official else " 游戏 介绍")
-    html, _ = fetch("https://www.baidu.com/s?" + urlencode({"wd": query}))
-    page = Page()
-    page.feed(html)
-    if "安全验证" in page.title or "验证码" in page.title:
-        raise ValueError("百度要求安全验证，暂不可访问")
-    # 不使用搜索摘要作为正文，只拿到链接后读取实际来源。
-    return list(dict.fromkeys(url for url in page.links if url.startswith("https://")))
-
-
-def search_pages(name, official=False):
-    hosts = OFFICIAL_HOSTS if official else REFERENCE_HOSTS
-    links = baidu_links(name, official)
-    candidates = [url for url in links if host_in(url, hosts) or url.startswith("https://www.baidu.com/link?")][:5]
-    reasons = []
-    matches = []
-    for url in candidates:
-        try:
-            html, final_url = fetch(url)
-            if not host_in(final_url, hosts):
-                continue
-            page = Page()
-            page.feed(html)
-            if not has_identity(name, page.title):
-                continue
-            texts = [page.description, *page.paragraphs]
-            text = next((text.strip() for text in texts if len(text.strip()) >= 40 and is_game(text)), "")
-            if text:
-                matches.append((text[:1200], final_url))
-        except (OSError, ValueError) as error:
-            reasons.append(type(error).__name__)
-    if matches:
-        # 单页的标题不能证明同名作品身份；多个同类结果则交由人工核实。
-        if len({url for _, url in matches}) > 1:
-            return ResearchResult(status="名称待确认", reason="多个页面匹配同名游戏，需要核对开发商或平台")
-        text, url = matches[0]
-        return reference(name, text, url, "官网/商店参考资料" if official else "百度检索来源参考资料")
-    return ResearchResult(reason="未找到可读取且名称匹配的来源页面" + ("；部分页面读取失败" if reasons else ""))
-
-
-def research_official(name):
-    return search_pages(name, official=True)
-
-
-def research_baidu(name):
-    return search_pages(name)
-
-
 def research_wikipedia(name):
     failures, ambiguous = [], False
     for language in ("zh", "en"):
         # 标题查询使用维基自身重定向和简繁转换，不自行猜测别名。
-        titles = [name, name + " (电子游戏)", name + " (游戏)"] if language == "zh" else [name, name + " (video game)"]
+        titles = [title + suffix for title in query_names(name)
+                  for suffix in (("", " (电子游戏)", " (游戏)") if language == "zh" else ("", " (video game)"))]
         params = dict(action="query", format="json", formatversion=2, titles="|".join(titles),
-                      redirects=1, converttitles=1, prop="extracts|pageprops|info",
+                      redirects=1, converttitles=1, prop="extracts|pageprops|info|langlinks", lllang="en", lllimit=1,
                       exintro=1, explaintext=1, inprop="url", variant="zh-cn")
         try:
             raw, _ = fetch(f"https://{language}.wikipedia.org/w/api.php?" + urlencode(params))
@@ -190,10 +76,15 @@ def research_wikipedia(name):
                     continue
                 url = page.get("fullurl", "")
                 if text and host_in(url, {f"{language}.wikipedia.org"}):
-                    matches[page["pageid"]] = (text, url)
+                    aliases = [link["title"] for link in page.get("langlinks", []) if link.get("lang") == "en" and link.get("title")]
+                    if language == "en" and page.get("title"):
+                        aliases.append(page["title"])
+                    matches[page["pageid"]] = (text, url, aliases)
             if len(matches) == 1:
-                text, url = next(iter(matches.values()))
-                return reference(name, text.split("\n")[0][:1200], url, "维基百科参考资料")
+                text, url, aliases = next(iter(matches.values()))
+                result = reference(name, text.split("\n")[0][:1200], url, "维基百科参考资料")
+                result.aliases = aliases
+                return result
             if len(matches) > 1:
                 return ResearchResult(status="名称待确认", reason="维基百科有多个同名游戏条目")
         except (OSError, ValueError) as error:

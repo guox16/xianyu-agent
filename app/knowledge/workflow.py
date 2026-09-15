@@ -13,6 +13,7 @@ class ResearchResult:
     sources: list[str] = field(default_factory=list)
     status: str = "补充失败"
     reason: str = "未找到有依据的资料"
+    aliases: list[str] = field(default_factory=list)
 
 
 class KnowledgeBase:
@@ -124,6 +125,7 @@ class KnowledgeBase:
                 entry["pending_preview"] = dict(
                     game_name=entry["game_name"], content=result.content,
                     sources=result.sources, last_attempt_at=attempted, preview_id=preview_id,
+                    aliases=result.aliases,
                 )
                 if not entry["material_file"]:
                     entry.update(status="待补充", reason="已生成预览，等待确认")
@@ -152,6 +154,7 @@ class KnowledgeBase:
         content = preview["content"] + "\n\n## 资料来源\n\n" + "\n".join(f"- {url}" for url in preview["sources"]) + "\n"
         entry.update(content=content, sources=preview["sources"],
                      updated_at=preview["last_attempt_at"], preview_id=preview_id)
+        entry["aliases"] = list(dict.fromkeys([*entry["aliases"], *preview.get("aliases", [])]))
         entry.pop("pending_preview")
         entry.update(material_file=self.knowledge_file.name, status="已补充", reason="")
         self._write(self.catalog_file, entries)
