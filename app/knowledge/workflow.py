@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from app.knowledge.game_names import identity_key
+
 
 @dataclass
 class ResearchResult:
@@ -33,10 +35,6 @@ class KnowledgeBase:
         entries = self.entries()
         current = json.loads(self.knowledge_file.read_text(encoding="utf-8-sig")) if self.knowledge_file.exists() else None
         if entries and current != entries:
-            if current is not None:
-                backup = self.root / "knowledge-before-merge.json"
-                if not backup.exists():
-                    self._write(backup, current)
             self._write(self.knowledge_file, entries)
             return [entry["game_name"] for entry in entries]
         return []
@@ -86,15 +84,17 @@ class KnowledgeBase:
             temporary.unlink(missing_ok=True)
 
     def register(self, game_names):
-        """登记原始仓库名称；重复导入保留已维护状态，不自动猜测别名。"""
+        """登记原始仓库名称；同一作品的标点/空格变体或确认别名不重复登记。"""
         entries = self.entries()
-        names = {entry["game_name"].casefold() for entry in entries}
+        names = {identity_key(value) for entry in entries
+                 for value in [entry["game_name"], *entry.get("aliases", [])]}
         for name in game_names:
             name = name.strip()
-            if name and name.casefold() not in names:
+            key = identity_key(name)
+            if name and key not in names:
                 entries.append(dict(game_name=name, aliases=[], material_file=None,
                                     status="待补充", reason="", last_attempt_at=None, content=None, sources=[]))
-                names.add(name.casefold())
+                names.add(key)
         self._write(self.catalog_file, entries)
 
     def process(self, research, statuses=("待补充", "补充失败"), game_names=None):

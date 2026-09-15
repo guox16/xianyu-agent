@@ -38,10 +38,11 @@ results 包含逐款成功/失败状态。分享访问或文件读写异常交�
 
 不再创建单独的 catalog.json、游戏 Markdown 或预览文件。
 查询先匹配名称，只向 AI 返回这款游戏的正文；登记状态与正文是否存在仍分开判断。
+导入时会合并仅空格、标点或明确版本后缀不同的名称；已由 Steam 或维基百科确认的中英文别名也会归入同一条记录。
 当前客服入口仍未接入此查询接口。
 
 首次启动会合并旧商品目录、总资料文件、关联的 Markdown 和有效旧预览。
-旧文件保留为备份，旧 knowledge.json 另备份到 knowledge-before-merge.json。
+迁移直接写入 `knowledge.json`，不再创建 `knowledge-before-merge.json` 备份。
 迁移后只使用新文件，不再读取旧目录；可重复启动，不会恢复被删除的旧条目。
 
 扫描报告 quark-scan.json 保留原始网盘路径，generation-report.json 保存最近一轮结果；

@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from app.core.config import PROJECT_ROOT
+from app.knowledge.game_names import identity_key
 from app.knowledge.workflow import KnowledgeBase
 
 API = "https://drive-m.quark.cn/1/clouddrive/share/sharepage/"
@@ -125,12 +126,13 @@ def scan(client):
 
 
 def import_catalog(kb, report):
-    """完整扫描后一次性登记；保留原有资料状态，不把目录宣传当作知识。"""
+    """完整扫描后一次性登记；合并名称变体和确认别名，保留原有资料状态。"""
     entries = kb.entries()
-    names = {entry["game_name"].strip().casefold() for entry in entries}
+    names = {identity_key(value) for entry in entries
+             for value in [entry["game_name"], *entry.get("aliases", [])]}
     added = 0
     for game in report["games"]:
-        key = game["game_name"].casefold()
+        key = identity_key(game["game_name"])
         if key in names:
             continue
         entries.append(dict(game_name=game["game_name"], aliases=[], material_file=None,
@@ -155,7 +157,7 @@ def main():
         kb = KnowledgeBase(args.root)
         report_path = args.root / "quark-scan.json"
         kb._write(report_path, report)
-        unique = len({game["game_name"].casefold() for game in report["games"]})
+        unique = len({identity_key(game["game_name"]) for game in report["games"]})
         print(f"读取 {len(report['games'])} 个游戏候选项，去重后 {unique} 个，跳过 {len(report['skipped'])} 项。")
         print(f"原始目录与名称预览：{report_path}")
         if args.import_catalog:

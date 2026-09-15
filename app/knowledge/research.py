@@ -66,7 +66,10 @@ def research_steam(game_name):
     lines.extend(["", "## 卖家信息待确认", "",
                   "本店安装包版本、包含的 DLC、售价、交付方式、语言、联机支持、兼容性和售后政策尚未确认。",
                   "以上为 Steam 商店参考资料，不代表仓库安装包具备相同内容或功能。"])
-    return ResearchResult(content="\n".join(lines), sources=[f"https://store.steampowered.com/app/{app_id}/"])
+    # Steam 返回的商店名称可作为同一条官方来源确认的别名；仅在名称确有差异时保存。
+    aliases = [data["name"]] if identity_key(data["name"]) != identity_key(game_name) else []
+    return ResearchResult(content="\n".join(lines), sources=[f"https://store.steampowered.com/app/{app_id}/"],
+                          aliases=aliases)
 
 
 def research_game(game_name):

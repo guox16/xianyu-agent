@@ -27,6 +27,17 @@ class KnowledgeTests(unittest.TestCase):
             kb.confirm(outcome["preview_id"])
             self.assertIn("官方资料", kb.lookup("Euro Truck Simulator 2")["content"])
 
+    def test_name_variants_and_confirmed_english_alias_are_not_registered_twice(self):
+        with TemporaryDirectory() as directory:
+            kb = KnowledgeBase(Path(directory))
+            kb.register(["007 初露锋芒", "007初露锋芒", "007：初露锋芒"])
+            self.assertEqual([entry["game_name"] for entry in kb.entries()], ["007 初露锋芒"])
+            preview = kb.process(lambda _: ResearchResult(content="官方资料", sources=["https://example.com"],
+                                                          aliases=["007 First Light"]))[0]
+            kb.confirm(preview["preview_id"])
+            kb.register(["007 First Light"])
+            self.assertEqual(len(kb.entries()), 1)
+
     def test_multiple_games_share_one_file_and_updates_are_isolated(self):
         with TemporaryDirectory() as directory:
             kb = KnowledgeBase(Path(directory))
@@ -55,6 +66,7 @@ class KnowledgeTests(unittest.TestCase):
             self.assertEqual(kb.migrate_materials(), [])
             self.assertEqual(kb.lookup("旧游戏")["content"], "原资料及来源")
             self.assertTrue((kb.root / "old.md").exists())
+            self.assertFalse((kb.root / "knowledge-before-merge.json").exists())
 
     def test_failure_continues_preview_requires_confirmation_and_lookup(self):
         with TemporaryDirectory() as directory:
