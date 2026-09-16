@@ -45,6 +45,21 @@ class KnowledgeBase:
             query, game_name=game_name, top_k=top_k,
         )
 
+    def semantic_retriever(self, *, max_chars=1000):
+        """为当前资料创建语义检索器，调用 build 或 search 时按需生成向量。"""
+        from app.knowledge.semantic import LocalEmbedder, SemanticRetriever
+
+        return SemanticRetriever(
+            self.chunks(max_chars=max_chars), LocalEmbedder(self.root / "models"),
+            self.root / "index" / "semantic.json",
+        )
+
+    def semantic_search(self, query, *, game_name=None, top_k=5, min_score=None, max_chars=1000):
+        """使用最新资料检索，自动复用或更新本地向量缓存。"""
+        return self.semantic_retriever(max_chars=max_chars).search(
+            query, game_name=game_name, top_k=top_k, min_score=min_score,
+        )
+
     def migrate_materials(self):
         """旧目录、正文和有效预览合并；不删除旧文件，不自动重试。"""
         entries = self.entries()

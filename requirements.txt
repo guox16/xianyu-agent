@@ -8,3 +8,5 @@ langchain-deepseek==1.1.0
 python-dotenv==1.2.3
 # 本地 BM25 检索使用的中文分词器。
 jieba==0.42.1
+# 中文语义向量，本地 CPU 推理。
+fastembed==0.8.0

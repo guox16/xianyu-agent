@@ -9,7 +9,7 @@
 ```
 
 原始资料仍保存在 `knowledge.json`，分块文件是可重建的检索副本；资料更新后需重新执行命令。
-已实现切分与 BM25 关键词检索，尚未接入 Embedding 或客服检索。
+已实现切分、BM25 关键词检索及本地向量语义检索，尚未接入客服检索。
 
 - 默认 1000 字符以内保留全文；长资料按二级标题切分，过长章节再按三级标题切分。
 - 可用 `--max-chars 800` 调整软阈值。无标题长文和完整三级章节不强行截断，分块允许超长。
@@ -53,7 +53,42 @@ results = retriever.search("回合制 策略", top_k=5)
 - 未指定游戏时搜索全库，不自动从问题识别游戏；需要业务调用方传入当前游戏。
 - 返回完整分块元数据，并附加 `bm25_score`、`matched_terms`、`rank`、`retrieval_method`，供后续向量结果融合使用。
 - 空查询、仅语气词或完全无词命中返回空列表，不拿零分资料凑数。命中部分词不代表资料足以回答问题，分数也不代表事实可信度。
-- 此入口未接入客服和发帖，尚未实现向量检索或 RRF 融合。使用检索结果回答时应保留 `notices`、来源及待核验标记。
+- 此入口未接入客服和发帖；语义检索是独立入口，尚未实现 RRF 融合。使用检索结果回答时应保留 `notices`、来源及待核验标记。
+
+## 向量语义检索
+
+使用 FastEmbed 在 CPU 上运行 `BAAI/bge-small-zh-v1.5` 中文模型，输出 512 维向量。
+首次使用会下载模型到 `materials/models/`，无需 API Key；资料与问题在本机编码。
+模型信息参考 [模型说明](https://huggingface.co/BAAI/bge-small-zh-v1.5)。
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+# 生成全部分块的向量；再次执行只补充新增或修改的文本。
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.semantic --build
+# 检索时也会自动检查当前资料并更新向量缓存。
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.semantic "需要思考每一步怎么行动的游戏" --top-k 3
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.semantic "我的电脑能运行吗" --game "苏丹的游戏"
+```
+
+程序调用：
+
+```python
+kb = KnowledgeBase(Path("materials"))
+results = kb.semantic_search("需要思考每一步怎么行动的游戏", top_k=3)
+# 多次查询可复用检索器和已加载的模型；资料修改后重新创建检索器。
+retriever = kb.semantic_retriever()
+summary = retriever.build()
+results = retriever.search("能和朋友一起玩的游戏", top_k=5)
+```
+
+- 向量缓存在 `materials/index/semantic.json`，包含模型/编码规则标识及文本哈希到向量的映射；暂不需要向量数据库。
+- 原始资料及来源仍由 `knowledge.json` 提供，查询读取当前分块元数据。删除的资料不会继续返回，来源或待核验标记更新也会反映在结果中。
+- 更换模型标识或编码规则时全部重新生成；生成失败保留旧缓存，查询报错，不返回陈旧资料；损坏缓存需要移走后重新生成。
+- 超长分块以 160 字符窗口分别编码，再均值合并并归一化。原始正文不裁剪；这种聚合可能稀释局部细节，后续可用真实问题评测调整。
+- 按余弦相似度排序，保留完整分块、来源、`notices`，附加 `semantic_score`、`rank`、`retrieval_method`。
+- 游戏范围匹配规则与 BM25 一致：明确名称或别名、拒绝歧义、不自动推断问题中的游戏名；未知范围和空问题直接返回空列表。
+- 语义检索会返回最相近的资料，即便资料不足以回答问题。默认不设统一阈值，可传 `min_score` 或命令行 `--min-score`，需按实际问题评测；分数不是可信度。
+- 缓存仅支持单进程串行更新。目前未接入客服和发帖，也尚未合并 BM25 与语义结果。
 
 在项目根目录运行：
 
