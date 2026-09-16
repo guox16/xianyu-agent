@@ -9,7 +9,7 @@
 ```
 
 原始资料仍保存在 `knowledge.json`，分块文件是可重建的检索副本；资料更新后需重新执行命令。
-目前只实现切分，尚未接入 BM25、Embedding 或客服检索。
+已实现切分与 BM25 关键词检索，尚未接入 Embedding 或客服检索。
 
 - 默认 1000 字符以内保留全文；长资料按二级标题切分，过长章节再按三级标题切分。
 - 可用 `--max-chars 800` 调整软阈值。无标题长文和完整三级章节不强行截断，分块允许超长。
@@ -20,6 +20,40 @@
 - 只切分“已补充”的已保存正文，忽略空资料和未提交预览。
 
 程序调用：`KnowledgeBase(root).chunks(max_chars=1000)`，只返回分块，不写文件。
+
+## BM25 关键词检索
+
+安装依赖后，在项目根目录查询：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.bm25 "回合制 策略" --top-k 5
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.bm25 "配置" --game "苏丹的游戏"
+```
+
+程序调用：
+
+```python
+from pathlib import Path
+from app.knowledge import KnowledgeBase
+from app.knowledge.bm25 import BM25Retriever
+
+kb = KnowledgeBase(Path("materials"))
+results = kb.search("配置", game_name="苏丹的游戏", top_k=5)
+
+# 多次查询时复用内存索引；资料变动后重新创建。
+retriever = BM25Retriever(kb.chunks())
+results = retriever.search("回合制 策略", top_k=5)
+```
+
+- `KnowledgeBase.search` 每次读取当前原始资料并重新切分建索引，不依赖导出的 `chunks.json`，不修改知识文件。
+- 中文采用 jieba 搜索模式，英文忽略大小写；保留错误码及带点、连字符的版本号，过滤少量常见语气词。只做关键词匹配，不做同义词或语义扩展。
+- 采用正值 IDF 的 BM25，参数 `k1=1.2`、`b=0.75`；单条资料也能正常命中。
+- 指定游戏时按名称或别名匹配（忽略空白、大小写和全半角差异），不删除版本信息。未知名称返回空列表，歧义名称报错，不回退全库。
+- 未指定游戏时搜索全库，不自动从问题识别游戏；需要业务调用方传入当前游戏。
+- 返回完整分块元数据，并附加 `bm25_score`、`matched_terms`、`rank`、`retrieval_method`，供后续向量结果融合使用。
+- 空查询、仅语气词或完全无词命中返回空列表，不拿零分资料凑数。命中部分词不代表资料足以回答问题，分数也不代表事实可信度。
+- 此入口未接入客服和发帖，尚未实现向量检索或 RRF 融合。使用检索结果回答时应保留 `notices`、来源及待核验标记。
 
 在项目根目录运行：
 

@@ -6,3 +6,5 @@ langgraph>=1.0.0,<2.0.0
 langchain-deepseek==1.1.0
 # 将本地 .env 文件读取为环境变量。
 python-dotenv==1.2.3
+# 本地 BM25 检索使用的中文分词器。
+jieba==0.42.1

@@ -37,6 +37,14 @@ class KnowledgeBase:
 
         return chunk_entries(self.entries(), max_chars=max_chars)
 
+    def search(self, query, *, game_name=None, top_k=5, max_chars=1000):
+        """按当前资料构建 BM25 索引并查询，不依赖可能过期的导出文件。"""
+        from app.knowledge.bm25 import BM25Retriever
+
+        return BM25Retriever(self.chunks(max_chars=max_chars)).search(
+            query, game_name=game_name, top_k=top_k,
+        )
+
     def migrate_materials(self):
         """旧目录、正文和有效预览合并；不删除旧文件，不自动重试。"""
         entries = self.entries()
