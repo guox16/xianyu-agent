@@ -31,6 +31,12 @@ class KnowledgeBase:
         """一次读取总资料文件，调用方按游戏名取出所需的一条。"""
         return {entry["game_name"]: entry for entry in self.entries() if entry.get("content")}
 
+    def chunks(self, *, max_chars=1000):
+        """读取当前已保存资料并切分，供关键词及向量索引共用。"""
+        from app.knowledge.chunking import chunk_entries
+
+        return chunk_entries(self.entries(), max_chars=max_chars)
+
     def migrate_materials(self):
         """旧目录、正文和有效预览合并；不删除旧文件，不自动重试。"""
         entries = self.entries()
