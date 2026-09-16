@@ -2,6 +2,7 @@
 
 from app.customer.cli import main as run_customer_chat
 from app.posting.cli import main as run_posting
+from app.knowledge.main import main as run_knowledge
 
 
 def main():
@@ -12,6 +13,7 @@ def main():
     while True:
         print("\n1. 智能客服")
         print("2. 发帖生成")
+        print("3. 知识库维护")
         print("0. 退出")
         try:
             choice = input("请输入选择：").strip()
@@ -27,11 +29,14 @@ def main():
         elif choice == "2":
             run_posting()
             print("已返回主菜单。")
+        elif choice == "3":
+            run_knowledge()
+            print("已返回主菜单。")
         elif choice == "0":
             print("程序已退出，再见！")
             break
         else:
-            print("输入无效，请输入 1、2 或 0。")
+            print("输入无效，请输入 1、2、3 或 0。")
 
 
 # 直接运行此文件时，从 main() 开始执行。
