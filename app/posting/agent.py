@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 
 from app.core.model import create_model
 from app.core.material_tools import query_game_material
+from app.core.context import compact_posting_messages
 from app.posting.schemas import PostingRequest, PostingDraft
 
 
@@ -64,7 +65,9 @@ class PostingAgent:
             raise ValueError("修改要求不能为空。")
         if self.request is None or not any(isinstance(message, ToolMessage) for message in self.history):
             raise ValueError("请先成功查询商品资料并生成。")
-        messages = list(self.history) + [HumanMessage(content=instruction)]
+        messages = compact_posting_messages(
+            list(self.history) + [HumanMessage(content=instruction)]
+        )
         draft = self._invoke(messages)
         self.history = messages + [AIMessage(content=draft.model_dump_json())]
         self.revisions.append(instruction)
