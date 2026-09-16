@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.material_tools import query_game_material
 from app.core.model import create_model
+from app.core.context import compact_customer_messages
 
 
 SAFE_FALLBACK = "这项信息暂无法确认，请联系卖家核实后再回复你。"
@@ -187,9 +188,12 @@ class CustomerAgent:
         if not question:
             raise ValueError("问题不能为空。")
         # 不修改旧历史；回答或质检任一节点失败时均不提交本轮中间消息。
+        messages = compact_customer_messages(
+            list(self.history) + [HumanMessage(content=question)]
+        )
         result = self.workflow.invoke({
             "question": question,
-            "messages": list(self.history) + [HumanMessage(content=question)],
+            "messages": messages,
             "candidate": "",
             "material_results": [],
             "review": None,
