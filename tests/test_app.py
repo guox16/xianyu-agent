@@ -10,13 +10,13 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from openai import APITimeoutError
 
 import main
 from app.core.config import Settings
-from app.customer.agent import CustomerAgent
+from app.customer.agent import CustomerAgent, ReviewDecision
 from app.core.material_tools import query_game_material
 from app.core.materials import load_material
 from examples import model_call
@@ -233,9 +233,20 @@ class CustomerAgentTests(unittest.TestCase):
         output.__enter__()
         self.addCleanup(output.__exit__, None, None, None)
 
-    def make_customer(self, responses):
-        with patch("app.customer.agent.create_model", return_value=ScriptedModel(responses=responses)):
-            return CustomerAgent()
+    def make_customer(self, responses, reviews=None):
+        reviews = reviews or [ReviewDecision(approved=True)]
+        review_messages = [AIMessage(content="", tool_calls=[{
+            "name": "ReviewDecision", "args": review.model_dump(),
+            "id": f"review-{index}", "type": "tool_call",
+        }]) for index, review in enumerate(reviews)]
+        with patch("app.customer.agent.create_model", side_effect=[
+            ScriptedModel(responses=responses), ScriptedModel(responses=review_messages),
+        ]):
+            customer = CustomerAgent()
+        invocation = patch.object(customer.reviewer, "invoke", wraps=customer.reviewer.invoke)
+        invocation.start()
+        self.addCleanup(invocation.stop)
+        return customer
 
     def test_real_tool_loop_and_followup_keep_paired_messages(self):
         customer = self.make_customer([query_message(), AIMessage(content="0.1 元"), AIMessage(content="不远程")])
@@ -291,6 +302,26 @@ class CustomerAgentTests(unittest.TestCase):
         with self.assertRaises(GraphRecursionError):
             looping.ask("多少钱")
         self.assertEqual(looping.history, [])
+
+    def test_reviewer_rewrites_once_then_approves(self):
+        customer = self.make_customer(
+            [AIMessage(content="保证远程安装"), AIMessage(content="提供安装指导，不提供远程服务")],
+            [ReviewDecision(approved=False, issues=["资料未承诺远程安装"],
+                            rewrite_instruction="删除远程安装承诺。"),
+             ReviewDecision(approved=True)],
+        )
+        self.assertEqual(customer.ask("能帮我装吗"), "提供安装指导，不提供远程服务")
+        self.assertEqual(customer.reviewer.invoke.call_count, 2)
+        self.assertEqual(len([m for m in customer.history if isinstance(m, HumanMessage)]), 2)
+
+    def test_reviewer_uses_safe_fallback_after_one_failed_rewrite(self):
+        customer = self.make_customer(
+            [AIMessage(content="保证永久更新"), AIMessage(content="一直免费更新")],
+            [ReviewDecision(approved=False, rewrite_instruction="删除永久更新承诺。"),
+             ReviewDecision(approved=False, rewrite_instruction="删除免费更新承诺。")],
+        )
+        self.assertIn("暂无法确认", customer.ask("以后都免费更新吗"))
+        self.assertEqual(customer.reviewer.invoke.call_count, 2)
 
 
 class MenuTests(unittest.TestCase):

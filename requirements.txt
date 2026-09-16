@@ -1,5 +1,7 @@
 # Agent 框架：后续用来组合模型、消息和工具。
 langchain==1.4.0
+# 显式声明多 Agent 状态机依赖，避免仅依赖 LangChain 的传递安装。
+langgraph>=1.0.0,<2.0.0
 # DeepSeek 模型适配器。
 langchain-deepseek==1.1.0
 # 将本地 .env 文件读取为环境变量。
