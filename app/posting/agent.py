@@ -1,6 +1,7 @@
 """根据查询到的商品资料生成和修改发帖草稿。"""
 
 import json
+from uuid import uuid4
 
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy, StructuredOutputError
@@ -9,6 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from app.core.model import create_model
 from app.core.material_tools import query_game_material
 from app.core.context import compact_posting_messages
+from app.core.observability import langfuse_config
 from app.posting.schemas import PostingRequest, PostingDraft
 
 
@@ -31,6 +33,7 @@ POSTING_RULES = """你是闲鱼商品发帖助手，用中文生成标题和正�
 
 class PostingAgent:
     def __init__(self):
+        self.session_id = str(uuid4())
         # 复用统一连接配置，只为标题、正文和结构化字段增加输出空间。
         self.agent = create_agent(
             model=create_model().model_copy(update={"max_tokens": 2048}),
@@ -79,7 +82,11 @@ class PostingAgent:
 
     def _invoke(self, messages: list[BaseMessage]) -> PostingDraft:
         try:
-            result = self.agent.invoke({"messages": messages}, config={"recursion_limit": 12})
+            result = self.agent.invoke({"messages": messages}, config={
+                "recursion_limit": 12,
+                **langfuse_config("posting_generate", session_id=self.session_id,
+                                  tags=("posting", "generate")),
+            })
         except StructuredOutputError:
             raise ValueError("模型返回的草稿格式无效，请重试。") from None
         # 截断或格式错误必须失败，不能把残缺结果当成可保存草稿。

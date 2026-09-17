@@ -6,9 +6,15 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError
 from app.posting.drafts import save_draft
 from app.posting.agent import PostingAgent
 from app.posting.schemas import PostingDraft, PostingRequest
+from app.core.knowledge_catalog import available_game_count, resolve_available_game
+from app.core.observability import flush_langfuse
 
 
 def read_request() -> PostingRequest:
+    count = available_game_count()
+    if not count:
+        raise ValueError("知识库没有可用的已确认商品资料，请先在菜单 3 维护知识库。")
+
     def read(label, default=""):
         value = input(label).strip()
         if value.lower() == "/exit":
@@ -16,11 +22,12 @@ def read_request() -> PostingRequest:
         return value or default
 
     return PostingRequest(
-        current_game=read("当前游戏 [苏丹的游戏]：", "苏丹的游戏"),
+        current_game=resolve_available_game(read(
+            f"当前游戏（知识库已有 {count} 款，输入名称或已确认别名）："
+        )),
         tone=read("语气 [自然]：", "自然"),
         length=read("长度 [简洁]：", "简洁"),
-        focus=read("重点 [夸克交付和安装指导，明确不提供远程服务]：",
-                   "夸克交付和安装指导，明确不提供远程服务"),
+        focus=read("重点："),
     )
 
 
@@ -97,6 +104,7 @@ def main():
                 command = command.lower()
         except (EOFError, KeyboardInterrupt):
             break
+    flush_langfuse()
     print("发帖会话已结束，已保存文件可在 drafts 目录查看。")
 
 

@@ -2,6 +2,7 @@
 
 import json
 from typing import TypedDict
+from uuid import uuid4
 
 from langchain.agents import create_agent
 from langchain.agents.structured_output import StructuredOutputError, ToolStrategy
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 from app.core.material_tools import query_game_material
 from app.core.model import create_model
 from app.core.context import compact_customer_messages
+from app.core.observability import langfuse_config
 
 
 SAFE_FALLBACK = "这项信息暂无法确认，请联系卖家核实后再回复你。"
@@ -44,7 +46,8 @@ REVIEW_PROMPT = """你是游戏商品客服的回复质检员，不直接与买�
 不通过时，issues 写出事实问题，rewrite_instruction 写给客服 Agent 的简短改写动作。
 通过时 issues 必须为空，rewrite_instruction 必须为空。"""
 
-CUSTOMER_PROMPT = """ 你是游戏商品咨询客服，根据当前商品名称，用简短自然的中文回答。
+CUSTOMER_PROMPT = """你是游戏商品咨询客服，根据当前商品名称，用简短自然的中文回答。
+            当前商品固定为：{current_game}。
             用户只问多少钱、怎么发货等省略名称的问题时，默认指当前商品。
             初始次回答某款游戏的价格、交付、售后或配置前，必须调用 query_game_material。
             后续可以复用历史中同一款游戏成功的工具结果；换游戏或要求重新查询时再调用。
@@ -70,10 +73,16 @@ class CustomerWorkflowState(TypedDict):
 
 
 class CustomerAgent:
-    def __init__(self, current_game: str = "苏丹的游戏"):
-      
+    def __init__(self, current_game: str):
+        current_game = current_game.strip()
+        if not current_game:
+            raise ValueError("当前游戏不能为空。")
+        self.session_id = str(uuid4())
         # 创建两个子Agent
-        self.agent = create_agent(name="customer_service", model=create_model(), tools=[query_game_material], system_prompt=CUSTOMER_PROMPT)
+        self.agent = create_agent(
+            name="customer_service", model=create_model(), tools=[query_game_material],
+            system_prompt=CUSTOMER_PROMPT.format(current_game=current_game),
+        )
         self.reviewer = create_agent(
             name="customer_reply_reviewer",
             model=create_model(),
@@ -89,14 +98,16 @@ class CustomerAgent:
         # 每个实例有独立历史；完整消息对象保留工具调用 ID 和对应结果。
         self.history: list[BaseMessage] = []
 
-    @staticmethod
-    def _summarize_history(source: str) -> str:
+    def _summarize_history(self, source: str) -> str:
         """仅在需要裁剪时调用模型，不把摘要失败伪装成历史事实。"""
         model = create_model().model_copy(update={"max_tokens": 256})
         response = model.invoke([
             SystemMessage(content=SUMMARY_PROMPT),
             HumanMessage(content="需要压缩的旧对话记录：\n" + source),
-        ])
+        ], config=langfuse_config(
+            "customer_history_summary", session_id=self.session_id,
+            tags=("customer", "history-summary"),
+        ))
         return str(response.content)
 
     def _build_workflow(self):
@@ -142,7 +153,11 @@ class CustomerAgent:
 
     def _answer(self, state: CustomerWorkflowState) -> dict:
         messages, candidate = self._completed_answer(self.agent.invoke(
-            {"messages": state["messages"]}, config={"recursion_limit": 12}
+            {"messages": state["messages"]}, config={
+                "recursion_limit": 12,
+                **langfuse_config("customer_answer", session_id=self.session_id,
+                                  tags=("customer", "answer")),
+            }
         ))
         return {"messages": messages, "candidate": candidate,
                 "material_results": self._material_results(messages)}
@@ -157,7 +172,11 @@ class CustomerAgent:
         messages = [HumanMessage(content=json.dumps(payload, ensure_ascii=False))]
         try:
             result = self.reviewer.invoke(
-                {"messages": messages}, config={"recursion_limit": 12},
+                {"messages": messages}, config={
+                    "recursion_limit": 12,
+                    **langfuse_config("customer_review", session_id=self.session_id,
+                                      tags=("customer", "review")),
+                },
             )
         except StructuredOutputError:
             raise ValueError("质检 Agent 返回格式无效，本轮未保存，请重试。") from None
@@ -184,7 +203,11 @@ class CustomerAgent:
             {"messages": state["messages"] + [HumanMessage(content=(
                 "质检未通过。请只基于已有成功资料改写上一条回复；不要增加新事实。"
                 f"改写要求：{instruction}"
-            ))]}, config={"recursion_limit": 12}
+            ))]}, config={
+                "recursion_limit": 12,
+                **langfuse_config("customer_rewrite", session_id=self.session_id,
+                                  tags=("customer", "rewrite")),
+            }
         ))
         return {"messages": messages, "candidate": candidate,
                 "material_results": self._material_results(messages),
