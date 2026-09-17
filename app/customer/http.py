@@ -12,6 +12,12 @@ from app.core.observability import flush_langfuse
 app = FastAPI(title="Xianyu Agent Customer API", docs_url=None, redoc_url=None)
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    """容器存活检查；不读取模型配置，也不调用模型。"""
+    return {"status": "UP"}
+
+
 _agents: dict[str, PlusCustomerAgent] = {}
 _agents_lock = Lock()
 _MAX_SESSIONS = 1_000

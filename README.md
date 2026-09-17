@@ -87,6 +87,8 @@ main.py      菜单入口
 
 安装依赖后，在项目根目录运行 `uvicorn app.customer.http:app --host 127.0.0.1 --port 12500`。Plus 开启 `AGENT_CUSTOMER_ENABLED=true` 后会调用 `POST /customer/reply`，并传入当前商品资料、会话标识和已聚合的买家消息。Agent 只返回 `answered` 加候选回复，或 `needs_human`；黑名单、人工接管、开关、最终发送和记录仍由 Plus 执行。
 
+若通过 `xianyu-Plus/compose.yaml` 部署，Compose 会直接构建本项目的 `Dockerfile`，并从本项目根目录 `.env` 读取模型配置；`materials/` 会以只读卷挂载进容器。无需向宿主机暴露 12500 端口，Plus 在 Compose 网络中通过 `http://agent:12500` 调用。
+
 ## 客服如何运行
 
 ```text
