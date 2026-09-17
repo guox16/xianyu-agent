@@ -9,7 +9,7 @@
 ```
 
 原始资料仍保存在 `knowledge.json`，分块文件是可重建的检索副本；资料更新后需重新执行命令。
-已实现切分、BM25 关键词检索及本地向量语义检索，尚未接入客服检索。
+已实现切分、BM25 关键词检索、本地向量语义检索与 RRF 融合，尚未接入客服检索。
 
 - 默认 1000 字符以内保留全文；长资料按二级标题切分，过长章节再按三级标题切分。
 - 可用 `--max-chars 800` 调整软阈值。无标题长文和完整三级章节不强行截断，分块允许超长。
@@ -53,7 +53,7 @@ results = retriever.search("回合制 策略", top_k=5)
 - 未指定游戏时搜索全库，不自动从问题识别游戏；需要业务调用方传入当前游戏。
 - 返回完整分块元数据，并附加 `bm25_score`、`matched_terms`、`rank`、`retrieval_method`，供后续向量结果融合使用。
 - 空查询、仅语气词或完全无词命中返回空列表，不拿零分资料凑数。命中部分词不代表资料足以回答问题，分数也不代表事实可信度。
-- 此入口未接入客服和发帖；语义检索是独立入口，尚未实现 RRF 融合。使用检索结果回答时应保留 `notices`、来源及待核验标记。
+- 此入口未接入客服和发帖；另有语义检索和 RRF 混合检索入口。使用检索结果回答时应保留 `notices`、来源及待核验标记。
 
 ## 向量语义检索
 
@@ -88,7 +88,34 @@ results = retriever.search("能和朋友一起玩的游戏", top_k=5)
 - 按余弦相似度排序，保留完整分块、来源、`notices`，附加 `semantic_score`、`rank`、`retrieval_method`。
 - 游戏范围匹配规则与 BM25 一致：明确名称或别名、拒绝歧义、不自动推断问题中的游戏名；未知范围和空问题直接返回空列表。
 - 语义检索会返回最相近的资料，即便资料不足以回答问题。默认不设统一阈值，可传 `min_score` 或命令行 `--min-score`，需按实际问题评测；分数不是可信度。
-- 缓存仅支持单进程串行更新。目前未接入客服和发帖，也尚未合并 BM25 与语义结果。
+- 缓存仅支持单进程串行更新。目前未接入客服和发帖，可通过下面的混合检索入口合并 BM25 与语义结果。
+
+## RRF 混合检索
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.hybrid "回合制 策略" --top-k 5
+.\.venv\Scripts\python.exe -X utf8 -m app.knowledge.hybrid "我的电脑能运行吗" --game "苏丹的游戏" --candidate-k 20
+```
+
+```python
+from pathlib import Path
+from app.knowledge import KnowledgeBase
+
+kb = KnowledgeBase(Path("materials"))
+results = kb.hybrid_search("回合制 策略", top_k=5)
+# 连续查询复用索引和模型；资料变化后重新创建。
+retriever = kb.hybrid_retriever()
+results = retriever.search("打开以后屏幕一片漆黑", game_name="苏丹的游戏")
+```
+
+- 同一次读取的分块分别交给 BM25 与语义检索，使用相同的游戏范围；各取 `candidate_k` 个候选，默认 `max(10, top_k)`，然后融合返回最多 `top_k` 条。
+- 两路等权，使用 `RRF = Σ 1 / (rrf_k + rank)`，名次从 1 开始，默认 `rrf_k=60`；未在某一路出现时，该路贡献为零。不相加 BM25 分数与余弦分数。
+- 按 `chunk_id` 合并，同一路重复候选只计算一次；同分按分块编号稳定排序。不同分块仍独立返回，不按游戏合并。
+- 返回完整资料元数据，以及 `rrf_score`、最终 `rank`、两路的 `bm25_rank / semantic_rank` 与原始分数、关键词 `matched_terms`；未命中的一路排名和分数为 `null`。
+- `semantic_min_score`（命令行 `--semantic-min-score`）只过滤语义一路，不删除 BM25 命中。RRF 分数不是概率或事实可信度，也不能保证资料足以回答问题。
+- 空问题直接返回空列表；一路无命中时保留另一路结果，两路均为空时返回空列表。任一路执行失败则报告异常，不静默降级为单路检索。
+- 复用已有 `semantic.json` 缓存；未生成或资料更新时按需生成向量。旧的 `search` 仍为 BM25，`semantic_search` 仍为纯语义，新入口为 `hybrid_search`。
+- 混合检索目前可通过 Python 或命令行独立调用，尚未接入客服与发帖 Agent。
 
 在项目根目录运行：
 

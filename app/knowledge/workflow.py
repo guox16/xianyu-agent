@@ -60,6 +60,27 @@ class KnowledgeBase:
             query, game_name=game_name, top_k=top_k, min_score=min_score,
         )
 
+    def hybrid_retriever(self, *, max_chars=1000):
+        """从同一次读取的分块创建两路检索，复用现有语义缓存。"""
+        from app.knowledge.bm25 import BM25Retriever
+        from app.knowledge.hybrid import HybridRetriever
+        from app.knowledge.semantic import LocalEmbedder, SemanticRetriever
+
+        chunks = self.chunks(max_chars=max_chars)
+        return HybridRetriever(
+            BM25Retriever(chunks),
+            SemanticRetriever(chunks, LocalEmbedder(self.root / "models"),
+                              self.root / "index" / "semantic.json"),
+        )
+
+    def hybrid_search(self, query, *, game_name=None, top_k=5, candidate_k=None,
+                      rrf_k=60, semantic_min_score=None, max_chars=1000):
+        """基于最新资料执行 BM25、语义检索及 RRF 融合。"""
+        return self.hybrid_retriever(max_chars=max_chars).search(
+            query, game_name=game_name, top_k=top_k, candidate_k=candidate_k,
+            rrf_k=rrf_k, semantic_min_score=semantic_min_score,
+        )
+
     def migrate_materials(self):
         """旧目录、正文和有效预览合并；不删除旧文件，不自动重试。"""
         entries = self.entries()
