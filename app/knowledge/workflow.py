@@ -31,6 +31,56 @@ class KnowledgeBase:
         """一次读取总资料文件，调用方按游戏名取出所需的一条。"""
         return {entry["game_name"]: entry for entry in self.entries() if entry.get("content")}
 
+    def chunks(self, *, max_chars=1000):
+        """读取当前已保存资料并切分，供关键词及向量索引共用。"""
+        from app.knowledge.chunking import chunk_entries
+
+        return chunk_entries(self.entries(), max_chars=max_chars)
+
+    def search(self, query, *, game_name=None, top_k=5, max_chars=1000):
+        """按当前资料构建 BM25 索引并查询，不依赖可能过期的导出文件。"""
+        from app.knowledge.bm25 import BM25Retriever
+
+        return BM25Retriever(self.chunks(max_chars=max_chars)).search(
+            query, game_name=game_name, top_k=top_k,
+        )
+
+    def semantic_retriever(self, *, max_chars=1000):
+        """为当前资料创建语义检索器，调用 build 或 search 时按需生成向量。"""
+        from app.knowledge.semantic import LocalEmbedder, SemanticRetriever
+
+        return SemanticRetriever(
+            self.chunks(max_chars=max_chars), LocalEmbedder(self.root / "models"),
+            self.root / "index" / "semantic.json",
+        )
+
+    def semantic_search(self, query, *, game_name=None, top_k=5, min_score=None, max_chars=1000):
+        """使用最新资料检索，自动复用或更新本地向量缓存。"""
+        return self.semantic_retriever(max_chars=max_chars).search(
+            query, game_name=game_name, top_k=top_k, min_score=min_score,
+        )
+
+    def hybrid_retriever(self, *, max_chars=1000):
+        """从同一次读取的分块创建两路检索，复用现有语义缓存。"""
+        from app.knowledge.bm25 import BM25Retriever
+        from app.knowledge.hybrid import HybridRetriever
+        from app.knowledge.semantic import LocalEmbedder, SemanticRetriever
+
+        chunks = self.chunks(max_chars=max_chars)
+        return HybridRetriever(
+            BM25Retriever(chunks),
+            SemanticRetriever(chunks, LocalEmbedder(self.root / "models"),
+                              self.root / "index" / "semantic.json"),
+        )
+
+    def hybrid_search(self, query, *, game_name=None, top_k=5, candidate_k=None,
+                      rrf_k=60, semantic_min_score=None, max_chars=1000):
+        """基于最新资料执行 BM25、语义检索及 RRF 融合。"""
+        return self.hybrid_retriever(max_chars=max_chars).search(
+            query, game_name=game_name, top_k=top_k, candidate_k=candidate_k,
+            rrf_k=rrf_k, semantic_min_score=semantic_min_score,
+        )
+
     def migrate_materials(self):
         """旧目录、正文和有效预览合并；不删除旧文件，不自动重试。"""
         entries = self.entries()
