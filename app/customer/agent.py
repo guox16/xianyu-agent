@@ -46,7 +46,8 @@ REVIEW_PROMPT = """你是游戏商品客服的回复质检员，不直接与买�
 不通过时，issues 写出事实问题，rewrite_instruction 写给客服 Agent 的简短改写动作。
 通过时 issues 必须为空，rewrite_instruction 必须为空。"""
 
-CUSTOMER_PROMPT = """ 你是游戏商品咨询客服，根据当前商品名称，用简短自然的中文回答。
+CUSTOMER_PROMPT = """你是游戏商品咨询客服，根据当前商品名称，用简短自然的中文回答。
+            当前商品固定为：{current_game}。
             用户只问多少钱、怎么发货等省略名称的问题时，默认指当前商品。
             初始次回答某款游戏的价格、交付、售后或配置前，必须调用 query_game_material。
             后续可以复用历史中同一款游戏成功的工具结果；换游戏或要求重新查询时再调用。
@@ -72,10 +73,16 @@ class CustomerWorkflowState(TypedDict):
 
 
 class CustomerAgent:
-    def __init__(self, current_game: str = "苏丹的游戏"):
+    def __init__(self, current_game: str):
+        current_game = current_game.strip()
+        if not current_game:
+            raise ValueError("当前游戏不能为空。")
         self.session_id = str(uuid4())
         # 创建两个子Agent
-        self.agent = create_agent(name="customer_service", model=create_model(), tools=[query_game_material], system_prompt=CUSTOMER_PROMPT)
+        self.agent = create_agent(
+            name="customer_service", model=create_model(), tools=[query_game_material],
+            system_prompt=CUSTOMER_PROMPT.format(current_game=current_game),
+        )
         self.reviewer = create_agent(
             name="customer_reply_reviewer",
             model=create_model(),
