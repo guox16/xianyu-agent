@@ -12,3 +12,6 @@ python-dotenv==1.2.3
 jieba==0.42.1
 # 中文语义向量，本地 CPU 推理。
 fastembed==0.8.0
+# 对外提供 Plus 调用的本地客服 HTTP 接口。
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
