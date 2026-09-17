@@ -6,6 +6,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError
 from app.posting.drafts import save_draft
 from app.posting.agent import PostingAgent
 from app.posting.schemas import PostingDraft, PostingRequest
+from app.core.observability import flush_langfuse
 
 
 def read_request() -> PostingRequest:
@@ -97,6 +98,7 @@ def main():
                 command = command.lower()
         except (EOFError, KeyboardInterrupt):
             break
+    flush_langfuse()
     print("发帖会话已结束，已保存文件可在 drafts 目录查看。")
 
 

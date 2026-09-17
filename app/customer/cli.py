@@ -4,6 +4,7 @@ from langgraph.errors import GraphRecursionError
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from app.customer.agent import CustomerAgent
+from app.core.observability import flush_langfuse
 
 
 def main():
@@ -42,6 +43,7 @@ def main():
             print("本轮处理达到循环上限，未保存。请简化问题后重试。")
         except ValueError:
             print("配置或模型返回格式异常，本轮未保存，请检查配置后重试。")
+    flush_langfuse()
     print("会话已结束。")
 
 

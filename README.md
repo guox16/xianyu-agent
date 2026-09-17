@@ -38,6 +38,14 @@ python -m venv .venv
 
 运行前准备根目录的 `.env`，字段参考 `.env.example`，填写自己的 DeepSeek API Key、模型名称和接口地址。已有环境变量优先于 `.env`。不要覆盖已有私密配置或把密钥提交到 Git。
 
+## Langfuse 调用链追踪（可选）
+
+项目已通过 Langfuse 的 LangChain 回调接入客服、质检、改写、发帖以及知识库的 DeepSeek 兜底调用。它会记录模型输入输出、工具调用、耗时、token 与错误；客服和发帖的同一轮会话会按独立 `session_id` 聚合。
+
+在 `.env` 中同时填写 `LANGFUSE_PUBLIC_KEY` 和 `LANGFUSE_SECRET_KEY` 后自动启用；留空或只填写其中一项都会禁用追踪，原业务流程不受影响。云端 EU 区域使用 `LANGFUSE_BASE_URL=https://cloud.langfuse.com`，自托管或其他区域请替换为对应地址。短生命周期命令行会话退出时会主动 flush 已积累事件。
+
+**数据提示：** Langfuse 会收到发送给模型的用户问题、本地商品资料、提示词、工具结果和模型输出。请仅在符合你的数据处理要求的 Langfuse 项目或自托管实例中启用，且不要把 Langfuse 密钥提交到 Git。
+
 本地资料位于 `materials/`，此目录被 Git 忽略。复制项目到另一台电脑时需要单独准备 UTF-8 商品资料；默认映射为 `materials/sultans-game.md`。增加游戏时，在 `app/core/material_tools.py` 的 `GAME_FILES` 中登记名称和文件名。
 
 - 菜单输入 `1` 进入客服，输入 `0` 退出程序。

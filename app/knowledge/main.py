@@ -9,6 +9,7 @@ if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core.config import PROJECT_ROOT
+from app.core.observability import flush_langfuse
 from app.knowledge.quark import QuarkClient, import_catalog, scan, parse_share
 from app.knowledge.research import research_game
 from app.knowledge.workflow import KnowledgeBase
@@ -101,6 +102,8 @@ def main(root=None):
         print("\n已结束，已完成的记录会保留。")
     except (OSError, ValueError) as error:
         print(f"本次操作未完成：{error}")
+    finally:
+        flush_langfuse()
 
 
 if __name__ == "__main__":

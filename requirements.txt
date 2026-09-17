@@ -4,6 +4,8 @@ langchain==1.4.0
 langgraph>=1.0.0,<2.0.0
 # DeepSeek 模型适配器。
 langchain-deepseek==1.1.0
+# LangChain / LangGraph 调用链追踪；未配置 LANGFUSE_* 密钥时不会启用。
+langfuse==4.15.4
 # 将本地 .env 文件读取为环境变量。
 python-dotenv==1.2.3
 # 本地 BM25 检索使用的中文分词器。
